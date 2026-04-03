@@ -1,0 +1,5 @@
+# フェーズ3以降で以下のファイルを追加する
+# - tts_service.dart
+# - comment_service.dart
+# - audio_service.dart
+# - wakelock_service.dart
