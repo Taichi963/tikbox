@@ -7,25 +7,35 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'features/main/main_provider.dart';
 import 'features/main/main_screen.dart';
-import 'features/settings/settings_provider.dart';
+import 'features/main/tts_provider.dart';
+import 'features/live/live_provider.dart';
 import 'services/app_logger.dart';
-import 'services/effect_sound_service.dart';
 import 'services/tts_service.dart';
 
+final wakelockShouldEnableProvider = Provider<bool>((ref) {
+  final keep = ref.watch(
+    ttsSettingsProvider.select((settings) => settings.keepScreenOn),
+  );
+  final live = ref.watch(
+    mainProvider.select((state) => state.isLive),
+  );
+  return keep && live;
+});
+
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    AppLogger.error(
-      'Flutter framework error',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
-  };
-
   await runZonedGuarded(
     () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        AppLogger.error(
+          'Flutter framework error',
+          error: details.exception,
+          stackTrace: details.stack,
+        );
+      };
+
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
       ]);
@@ -36,7 +46,6 @@ Future<void> main() async {
         ),
       );
 
-      unawaited(effectSoundService.initialize());
       unawaited(ttsService.init());
     },
     (error, stackTrace) {
@@ -72,9 +81,6 @@ class TikBoxApp extends StatelessWidget {
   }
 }
 
-/// settingsProvider の keepScreenOn と mainProvider の isLive を監視し、
-/// 「配信中 かつ keepScreenOn が true」のときだけスリープを防ぐ。
-/// 配信停止またはアプリ終了時は自動で解除する。
 class _WakelockWrapper extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -84,20 +90,39 @@ class _WakelockWrapper extends ConsumerStatefulWidget {
   ConsumerState<_WakelockWrapper> createState() => _WakelockWrapperState();
 }
 
-class _WakelockWrapperState extends ConsumerState<_WakelockWrapper> {
+class _WakelockWrapperState extends ConsumerState<_WakelockWrapper>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final shouldLock = ref.read(wakelockShouldEnableProvider);
+      WakelockPlus.toggle(enable: shouldLock);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(liveProvider.notifier).onAppResumed());
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     WakelockPlus.disable();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final keepScreenOn = ref.watch(settingsProvider).keepScreenOn;
-    final isLive = ref.watch(mainProvider).isLive;
-
-    final shouldLock = keepScreenOn && isLive;
-    WakelockPlus.toggle(enable: shouldLock);
+    ref.listen<bool>(wakelockShouldEnableProvider, (previous, next) {
+      if (previous == next) return;
+      WakelockPlus.toggle(enable: next);
+    });
 
     return widget.child;
   }

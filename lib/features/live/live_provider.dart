@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:piratetok_live/piratetok_live.dart';
 import 'package:uuid/uuid.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../models/comment_model.dart';
 import '../../services/app_logger.dart';
@@ -11,13 +10,6 @@ import '../../services/effect_sound_service.dart';
 import '../../services/tts_service.dart';
 import '../main/main_provider.dart';
 import '../main/tts_provider.dart';
-import '../premium/premium_provider.dart';
-
-const String _defaultWsUrl = 'ws://192.168.1.10:3000';
-const String _wsUrl = String.fromEnvironment(
-  'TIKBOX_WS_URL',
-  defaultValue: _defaultWsUrl,
-);
 
 enum WsStatus {
   disconnected,
@@ -56,14 +48,21 @@ class LiveState {
 }
 
 class LiveNotifier extends Notifier<LiveState> {
+  static const int _maxAutoReconnectAttempts = 6;
+  static const int _maxReconnectDelaySeconds = 16;
+
   final Uuid _uuid = const Uuid();
 
-  WebSocketChannel? _channel;
-  StreamSubscription<dynamic>? _subscription;
+  TikTokLiveClient? _client;
   String? _username;
+  String? _cookie;
   Timer? _reconnectTimer;
-  bool _manualDisconnect = false;
   bool _disposed = false;
+  bool _manualStopRequested = false;
+  int _autoReconnectAttempts = 0;
+
+  DateTime? _lastGiftTime;
+  int _comboStreak = 0;
 
   @override
   LiveState build() {
@@ -71,13 +70,13 @@ class LiveNotifier extends Notifier<LiveState> {
     return const LiveState();
   }
 
-  Future<void> startLive(String rawUsername) async {
+  Future<void> startLive(String rawUsername, {String? cookie}) async {
     final username = _normalizeUsername(rawUsername);
     if (username.isEmpty) {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: 'ユーザー名を入力してください',
+        errorMessage: 'Please enter a username',
       );
       return;
     }
@@ -86,9 +85,12 @@ class LiveNotifier extends Notifier<LiveState> {
       return;
     }
 
-    _manualDisconnect = false;
     _username = username;
-    _cancelReconnectTimer();
+    _cookie = cookie;
+    _manualStopRequested = false;
+    _resetReconnectState();
+    _resetGiftComboState();
+    await effectSoundService.primeForPlayback();
 
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
@@ -97,8 +99,8 @@ class LiveNotifier extends Notifier<LiveState> {
       clearError: true,
     );
 
-    AppLogger.info('Starting live connection for @$username');
-    await _connect(resetReconnectCount: true);
+    AppLogger.info('Starting native TikTok connection for @$username');
+    _connectNative(username, cookie: cookie);
   }
 
   Future<void> retryConnection() async {
@@ -106,25 +108,35 @@ class LiveNotifier extends Notifier<LiveState> {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: '再接続する配信が見つかりません',
+        errorMessage: 'No live target to reconnect',
       );
       return;
     }
 
-    _manualDisconnect = false;
-    _cancelReconnectTimer();
+    _manualStopRequested = false;
+    _resetReconnectState();
+    _resetGiftComboState();
+    await effectSoundService.primeForPlayback();
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
+      reconnectAttempts: 0,
       clearError: true,
     );
-    await _connect(resetReconnectCount: false);
+    _connectNative(_username!, cookie: _cookie);
   }
 
   Future<void> stopLive() async {
-    _manualDisconnect = true;
+    _manualStopRequested = true;
     _cancelReconnectTimer();
-    await _disconnectChannel();
+    _autoReconnectAttempts = 0;
+    _resetGiftComboState();
+    _username = null;
+    _cookie = null;
+    final previousClient = _client;
+    _client = null;
+    previousClient?.disconnect();
+
     await ttsService.stopAll();
     await ttsService.setConnectionActive(active: false);
     ref.read(mainProvider.notifier).stopLive();
@@ -143,104 +155,200 @@ class LiveNotifier extends Notifier<LiveState> {
     await ttsService.skip();
   }
 
-  Future<void> _connect({required bool resetReconnectCount}) async {
-    if (_disposed || _username == null) {
+  Future<void> onAppResumed() async {
+    if (_disposed || _manualStopRequested || _username == null) {
       return;
     }
 
-    if (resetReconnectCount) {
-      state = state.copyWith(reconnectAttempts: 0);
+    await effectSoundService.primeForPlayback();
+    unawaited(
+      ttsService.setConnectionActive(
+        active: state.wsStatus == WsStatus.connected || state.isConnecting,
+        username: _username,
+      ),
+    );
+
+    if (state.wsStatus == WsStatus.connecting &&
+        !(_reconnectTimer?.isActive ?? false)) {
+      AppLogger.info(
+        'App resumed while reconnect was pending, retrying for @$_username',
+      );
+      _connectNative(_username!, cookie: _cookie);
     }
+  }
 
-    await _disconnectChannel();
+  void _connectNative(String username, {String? cookie}) {
+    _cancelReconnectTimer();
+    final previousClient = _client;
+    _client = null;
+    previousClient?.disconnect();
+    _manualStopRequested = false;
+    _cookie = cookie ?? _cookie;
 
-    try {
-      _channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
-      await _channel!.ready.timeout(const Duration(seconds: 8));
+    final client = TikTokLiveClient(username);
+    if (_cookie != null && _cookie!.isNotEmpty) {
+      client.cookies(_cookie!);
+    }
+    _client = client;
 
-      _subscription = _channel!.stream.listen(
-        _handleRawMessage,
-        onError: _handleSocketError,
-        onDone: _handleSocketDone,
-        cancelOnError: true,
-      );
+    client.on(EventType.connected, (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      _handleStatusConnected();
+    });
 
-      _channel!.sink.add(
-        jsonEncode({
-          'type': 'connect',
-          'username': _username,
-        }),
-      );
+    client.on(EventType.disconnected, (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      _handleStatusDisconnected();
+    });
 
-      await ttsService.setConnectionActive(
+    client.on(EventType.reconnecting, (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      final attempt = _toInt(evt.data?['attempt']);
+      _handleStatusReconnecting(attempt);
+    });
+
+    client.on('error', (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      _handleStatusError(evt.data?['error']?.toString() ?? 'Unknown error');
+    });
+
+    client.on(EventType.chat, (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      final data = evt.data;
+      if (data == null) return;
+
+      final nickname =
+          data['user']?['nickname']?.toString() ??
+          data['user']?['uniqueId']?.toString() ??
+          '?';
+      final content = data['content']?.toString() ?? '';
+
+      _handleCommentNative(nickname, content);
+    });
+
+    client.on(EventType.gift, (evt) {
+      if (_disposed || !identical(_client, client)) return;
+      final data = evt.data;
+      if (data == null) return;
+
+      final nickname =
+          data['user']?['nickname']?.toString() ??
+          data['user']?['uniqueId']?.toString() ??
+          '?';
+      final giftMap = data['gift'] as Map<String, dynamic>? ?? {};
+      final giftName = giftMap['name']?.toString() ?? 'Gift';
+      final repeatCount = _toInt(data['repeatCount']);
+      final diamondCount = _toInt(giftMap['diamondCount']);
+
+      _handleGiftNative(nickname, giftName, repeatCount, diamondCount);
+    });
+
+    unawaited(
+      client.connect().catchError((error) {
+        if (_disposed || _manualStopRequested || !identical(_client, client)) {
+          return '';
+        }
+        AppLogger.error('TikTok connection failed totally', error: error);
+        _handleStatusError('Live was not found or the connection failed');
+        return '';
+      }),
+    );
+  }
+
+  void _handleStatusConnected() {
+    if (_disposed || _username == null) return;
+
+    _manualStopRequested = false;
+    _resetReconnectState();
+    unawaited(
+      ttsService.setConnectionActive(
         active: true,
         username: _username,
-      );
+      ),
+    );
+    ref.read(mainProvider.notifier).startLive(_username!);
 
+    state = state.copyWith(
+      wsStatus: WsStatus.connected,
+      isConnecting: false,
+      reconnectAttempts: 0,
+      clearError: true,
+    );
+    AppLogger.info('TikTok live natively connected for @$_username');
+  }
+
+  void _handleStatusDisconnected() {
+    if (_disposed) return;
+
+    if (_manualStopRequested || _username == null) {
+      _resetReconnectState();
+      unawaited(ttsService.setConnectionActive(active: false));
+      ref.read(mainProvider.notifier).stopLive();
       state = state.copyWith(
-        wsStatus: WsStatus.connected,
+        wsStatus: WsStatus.disconnected,
         isConnecting: false,
+        reconnectAttempts: 0,
         clearError: true,
       );
-      ref.read(mainProvider.notifier).startLive(_username!);
-      AppLogger.info('Live connected for @$_username');
-    } catch (error, stackTrace) {
-      AppLogger.error(
-        'Live connection failed',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      state = state.copyWith(
-        wsStatus: WsStatus.error,
-        isConnecting: false,
-        errorMessage: '接続に失敗しました。ネットワークと配信状況を確認してください。',
-      );
-      await _scheduleReconnect();
-    }
-  }
-
-  void _handleRawMessage(dynamic raw) {
-    try {
-      final map = jsonDecode(raw as String) as Map<String, dynamic>;
-      final type = map['type']?.toString() ?? '';
-
-      switch (type) {
-        case 'comment':
-          unawaited(_handleComment(map));
-          break;
-        case 'gift':
-          unawaited(_handleGift(map));
-          break;
-        case 'error':
-          state = state.copyWith(
-            wsStatus: WsStatus.error,
-            isConnecting: false,
-            errorMessage: map['message']?.toString() ?? '接続エラーが発生しました',
-          );
-          unawaited(_scheduleReconnect());
-          break;
-      }
-    } catch (error, stackTrace) {
-      AppLogger.error(
-        'Failed to decode WebSocket payload',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      state = state.copyWith(
-        wsStatus: WsStatus.error,
-        isConnecting: false,
-        errorMessage: '受信データの解析に失敗しました',
-      );
-      unawaited(_scheduleReconnect());
-    }
-  }
-
-  Future<void> _handleComment(Map<String, dynamic> map) async {
-    final userName = map['userName']?.toString() ?? '';
-    final text = map['text']?.toString() ?? '';
-    if (userName.isEmpty || text.isEmpty) {
       return;
     }
+
+    unawaited(
+      ttsService.setConnectionActive(
+        active: true,
+        username: _username,
+      ),
+    );
+    state = state.copyWith(
+      wsStatus: WsStatus.connecting,
+      isConnecting: true,
+      errorMessage: 'Connection lost. Waiting for reconnect',
+    );
+    _scheduleReconnect('Connection lost');
+  }
+
+  void _handleStatusReconnecting(int attempt) {
+    if (_disposed) return;
+
+    final trackedAttempt = attempt > state.reconnectAttempts
+        ? attempt
+        : state.reconnectAttempts;
+
+    unawaited(
+      ttsService.setConnectionActive(
+        active: true,
+        username: _username,
+      ),
+    );
+    state = state.copyWith(
+      wsStatus: WsStatus.connecting,
+      isConnecting: true,
+      reconnectAttempts: trackedAttempt,
+      errorMessage:
+          'Reconnecting... ($trackedAttempt/$_maxAutoReconnectAttempts)',
+    );
+  }
+
+  void _handleStatusError(String message) {
+    if (_disposed) return;
+
+    if (_manualStopRequested || _username == null) {
+      _resetReconnectState();
+      unawaited(ttsService.setConnectionActive(active: false));
+      ref.read(mainProvider.notifier).stopLive();
+      state = state.copyWith(
+        wsStatus: WsStatus.error,
+        isConnecting: false,
+        errorMessage: message,
+      );
+      return;
+    }
+
+    _scheduleReconnect(message);
+  }
+
+  void _handleCommentNative(String userName, String text) {
+    if (userName.isEmpty || text.isEmpty) return;
 
     final comment = CommentModel(
       id: _uuid.v4(),
@@ -253,142 +361,190 @@ class LiveNotifier extends Notifier<LiveState> {
     ref.read(mainProvider.notifier).addComment(comment);
     unawaited(effectSoundService.playComment());
 
-    final premiumNotifier = ref.read(premiumProvider.notifier);
-    final canRead = await premiumNotifier.consumeTtsAllowance();
-    if (!canRead) {
-      return;
-    }
-
     final settings = ref.read(ttsSettingsProvider);
-    final selectedVoice = premiumNotifier.canUseVoice(settings.commentVoice)
-        ? settings.commentVoice
-        : null;
-    await ttsService.enqueue(
-      comment.ttsText,
-      priority: ttsService.getPriority(comment),
-      voice: selectedVoice,
+    _enqueueCommentTts(
+      comment,
+      voice: settings.commentVoice,
     );
   }
 
-  Future<void> _handleGift(Map<String, dynamic> map) async {
-    final userName = map['userName']?.toString() ?? '';
-    if (userName.isEmpty) {
-      return;
-    }
+  void _handleGiftNative(
+    String userName,
+    String giftName,
+    int repeatCount,
+    int diamondCount,
+  ) {
+    if (userName.isEmpty) return;
+    if (diamondCount < 0) return;
+
+    final totalValue = diamondCount * repeatCount;
 
     final comment = CommentModel(
       id: _uuid.v4(),
       userName: userName,
       text: '',
       type: CommentType.gift,
-      giftName: map['giftName']?.toString() ?? 'Gift',
-      giftCount: _toInt(map['giftCount']),
+      giftName: giftName,
+      giftCount: repeatCount,
+      giftValue: totalValue,
       createdAt: DateTime.now(),
     );
 
     ref.read(mainProvider.notifier).addComment(comment);
 
-    final premiumNotifier = ref.read(premiumProvider.notifier);
-    if (premiumNotifier.hasPremiumGiftEffects) {
-      unawaited(effectSoundService.playPremiumGift());
+    final now = DateTime.now();
+    if (_lastGiftTime != null &&
+        now.difference(_lastGiftTime!).inSeconds <= 2) {
+      _comboStreak++;
     } else {
-      unawaited(effectSoundService.playGift());
+      _comboStreak = 1;
     }
+    _lastGiftTime = now;
 
-    final canRead = await premiumNotifier.consumeTtsAllowance();
-    if (!canRead) {
-      return;
-    }
+    final soundValue = totalValue <= 0 ? 1 : totalValue;
+
+    unawaited(
+      effectSoundService.playGiftEvent(
+        value: soundValue,
+        comboStreak: _comboStreak,
+      ),
+    );
 
     final settings = ref.read(ttsSettingsProvider);
     final preferredGiftVoice = settings.giftVoice ?? settings.commentVoice;
-    final selectedVoice = premiumNotifier.canUseVoice(preferredGiftVoice)
-        ? preferredGiftVoice
-        : null;
-    await ttsService.enqueueFirst(
-      comment.ttsText,
-      priority:
-          ttsService.getPriority(comment) + premiumNotifier.giftPriorityBoost(),
-      voice: selectedVoice,
+    _enqueueGiftTts(
+      comment,
+      value: soundValue,
+      voice: preferredGiftVoice,
     );
   }
 
-  void _handleSocketError(Object error) {
-    if (_disposed || _manualDisconnect) {
-      return;
-    }
-
-    AppLogger.warning('WebSocket error', error: error);
-    state = state.copyWith(
-      wsStatus: WsStatus.error,
-      isConnecting: false,
-      errorMessage: '接続が不安定です。再接続を試しています。',
+  void _enqueueCommentTts(
+    CommentModel comment, {
+    Map<String, String>? voice,
+  }) {
+    final sourceClient = _client;
+    unawaited(
+      Future<void>.delayed(effectSoundService.commentTtsLeadIn, () async {
+        if (_disposed || _manualStopRequested || !identical(_client, sourceClient)) {
+          return;
+        }
+        await ttsService.enqueue(
+          comment.ttsText,
+          priority: ttsService.getPriority(comment),
+          voice: voice,
+        );
+      }),
     );
-    unawaited(_scheduleReconnect());
   }
 
-  void _handleSocketDone() {
-    if (_disposed || _manualDisconnect) {
-      return;
-    }
-
-    AppLogger.warning('WebSocket closed unexpectedly');
-    state = state.copyWith(
-      wsStatus: WsStatus.disconnected,
-      isConnecting: false,
-      errorMessage: '接続が切断されました',
+  void _enqueueGiftTts(
+    CommentModel comment, {
+    required int value,
+    Map<String, String>? voice,
+  }) {
+    final sourceClient = _client;
+    unawaited(
+      Future<void>.delayed(effectSoundService.giftTtsLeadIn(value), () async {
+        if (_disposed || _manualStopRequested || !identical(_client, sourceClient)) {
+          return;
+        }
+        await ttsService.enqueueFirst(
+          comment.ttsText,
+          priority: ttsService.getPriority(comment) + 200,
+          voice: voice,
+        );
+      }),
     );
-    unawaited(_scheduleReconnect());
-  }
-
-  Future<void> _scheduleReconnect() async {
-    if (_manualDisconnect || _disposed || _username == null) {
-      return;
-    }
-
-    if (state.reconnectAttempts >= 3) {
-      state = state.copyWith(
-        wsStatus: WsStatus.error,
-        isConnecting: false,
-        errorMessage: '再接続上限に達しました。再接続ボタンを押してください。',
-      );
-      await ttsService.setConnectionActive(active: false);
-      ref.read(mainProvider.notifier).stopLive();
-      return;
-    }
-
-    final nextAttempt = state.reconnectAttempts + 1;
-    state = state.copyWith(
-      wsStatus: WsStatus.connecting,
-      isConnecting: true,
-      reconnectAttempts: nextAttempt,
-      errorMessage: '再接続中... ($nextAttempt/3)',
-    );
-
-    _cancelReconnectTimer();
-    _reconnectTimer = Timer(Duration(seconds: 1 << (nextAttempt - 1)), () {
-      unawaited(_connect(resetReconnectCount: false));
-    });
-  }
-
-  Future<void> _disconnectChannel() async {
-    await _subscription?.cancel();
-    _subscription = null;
-    await _channel?.sink.close();
-    _channel = null;
   }
 
   Future<void> _dispose() async {
     _disposed = true;
-    _manualDisconnect = true;
+    _manualStopRequested = true;
     _cancelReconnectTimer();
-    await _disconnectChannel();
+    _resetGiftComboState();
+    final previousClient = _client;
+    _client = null;
+    previousClient?.disconnect();
     await ttsService.setConnectionActive(active: false);
+  }
+
+  void _scheduleReconnect(String reason) {
+    if (_disposed || _manualStopRequested || _username == null) {
+      return;
+    }
+
+    if (_reconnectTimer?.isActive ?? false) {
+      return;
+    }
+
+    final nextAttempt = _autoReconnectAttempts + 1;
+    if (nextAttempt > _maxAutoReconnectAttempts) {
+      _handleReconnectExhausted(reason);
+      return;
+    }
+
+    _autoReconnectAttempts = nextAttempt;
+    final delay = _reconnectDelayForAttempt(nextAttempt);
+
+    state = state.copyWith(
+      wsStatus: WsStatus.connecting,
+      isConnecting: true,
+      reconnectAttempts: nextAttempt,
+      errorMessage:
+          '$reason. Retrying in ${delay.inSeconds}s '
+          '($nextAttempt/$_maxAutoReconnectAttempts)',
+    );
+
+    AppLogger.warning(
+      'Scheduling reconnect attempt $nextAttempt in ${delay.inSeconds}s '
+      'for @$_username',
+    );
+
+    _reconnectTimer = Timer(delay, () {
+      _reconnectTimer = null;
+      if (_disposed || _manualStopRequested || _username == null) {
+        return;
+      }
+      _connectNative(_username!, cookie: _cookie);
+    });
+  }
+
+  void _handleReconnectExhausted(String reason) {
+    _cancelReconnectTimer();
+    _resetGiftComboState();
+    unawaited(ttsService.setConnectionActive(active: false));
+    ref.read(mainProvider.notifier).stopLive();
+    state = state.copyWith(
+      wsStatus: WsStatus.error,
+      isConnecting: false,
+      errorMessage:
+          '$reason. Reconnect limit reached '
+          '($_maxAutoReconnectAttempts attempts)',
+    );
+  }
+
+  Duration _reconnectDelayForAttempt(int attempt) {
+    final seconds = 1 << (attempt - 1);
+    final cappedSeconds = seconds > _maxReconnectDelaySeconds
+        ? _maxReconnectDelaySeconds
+        : seconds;
+    return Duration(seconds: cappedSeconds);
+  }
+
+  void _resetReconnectState() {
+    _autoReconnectAttempts = 0;
+    _cancelReconnectTimer();
   }
 
   void _cancelReconnectTimer() {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+  }
+
+  void _resetGiftComboState() {
+    _lastGiftTime = null;
+    _comboStreak = 0;
   }
 
   String _normalizeUsername(String input) {
@@ -414,5 +570,6 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 }
 
-final liveProvider =
-    NotifierProvider<LiveNotifier, LiveState>(LiveNotifier.new);
+final liveProvider = NotifierProvider<LiveNotifier, LiveState>(
+  LiveNotifier.new,
+);

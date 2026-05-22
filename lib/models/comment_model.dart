@@ -10,6 +10,7 @@ class CommentModel {
   final CommentType type;
   final String? giftName;
   final int? giftCount;
+  final int giftValue;
   final DateTime createdAt;
 
   const CommentModel({
@@ -20,6 +21,7 @@ class CommentModel {
     required this.createdAt,
     this.giftName,
     this.giftCount,
+    this.giftValue = 0,
   });
 
   bool get isGift => type == CommentType.gift;

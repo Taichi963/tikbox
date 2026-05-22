@@ -322,6 +322,7 @@ class TikTokSession {
     this.safeSend({
       type: 'status',
       status,
+      connected: status === 'connected',
       username: this.username || '',
       reconnectAttempts,
     });

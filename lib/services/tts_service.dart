@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 
 import '../models/comment_model.dart';
 import '../models/tts_settings.dart';
@@ -24,37 +23,88 @@ class TtsQueueItem {
 
 class TtsService {
   TikBoxAudioHandler? _handler;
-  final FlutterTts _voiceProbe = FlutterTts();
+
   final List<TtsQueueItem> _queue = <TtsQueueItem>[];
+  Timer? _playbackRetryTimer;
 
   bool _initialized = false;
+  Future<void>? _initFuture;
+  DateTime? _nextInitAllowedAt;
+  int _initFailureStreak = 0;
   bool _isPlaying = false;
   bool _isSkipping = false;
+  int _playbackGeneration = 0;
   TtsSettings _settings = const TtsSettings();
   int _maxQueueLength = 20;
 
   bool get isPlaying => _isPlaying;
   int get queueLength => _queue.length;
 
+  Duration _cooldownAfterFailure() {
+    final streak = _initFailureStreak.clamp(1, 8);
+    final seconds = (4 * (1 << (streak - 1))).clamp(4, 120);
+    return Duration(seconds: seconds);
+  }
+
   Future<void> init() async {
-    if (_initialized) {
+    if (_initialized) return;
+
+    if (_initFuture != null) {
+      await _initFuture;
       return;
     }
 
-    _handler = await AudioService.init(
-      builder: TikBoxAudioHandler.new,
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.example.tikbox.tts',
-        androidNotificationChannelName: 'TikBox Live Reading',
-        androidNotificationChannelDescription:
-            'Keeps TikTok LIVE comment reading active in background',
-        androidNotificationOngoing: false,
-        androidStopForegroundOnPause: false,
-        androidNotificationIcon: 'mipmap/ic_launcher',
-      ),
-    );
-    await _handler!.ensureInitialized();
-    _initialized = true;
+    _initFuture = _doInit();
+    try {
+      await _initFuture;
+    } finally {
+      _initFuture = null;
+    }
+  }
+
+  Future<void> _doInit() async {
+    if (_initialized) return;
+
+    final now = DateTime.now();
+    if (_nextInitAllowedAt != null && now.isBefore(_nextInitAllowedAt!)) {
+      await Future.delayed(_nextInitAllowedAt!.difference(now));
+      if (_initialized) return;
+    }
+
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+
+      _handler ??= await AudioService.init(
+        builder: TikBoxAudioHandler.new,
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.example.tikbox.tts',
+          androidNotificationChannelName: 'TikBox Live Reading',
+          androidNotificationChannelDescription:
+              'Keeps TikTok LIVE comment reading active in background',
+          androidNotificationOngoing: false,
+          androidStopForegroundOnPause: false,
+          androidNotificationIcon: 'mipmap/ic_launcher',
+        ),
+      );
+
+      await _handler!.ensureInitialized();
+
+      _initialized = true;
+      _initFailureStreak = 0;
+      _nextInitAllowedAt = null;
+      _cancelPlaybackRetry();
+      AppLogger.info('TTS initialized');
+    } catch (e, st) {
+      AppLogger.error('TTS init failed', error: e, stackTrace: st);
+      _initialized = false;
+      _initFailureStreak += 1;
+      final wait = _cooldownAfterFailure();
+      _nextInitAllowedAt = DateTime.now().add(wait);
+      AppLogger.warning(
+        'TTS init backoff: next attempt in ${wait.inSeconds}s '
+        '(failure streak $_initFailureStreak)',
+      );
+    }
   }
 
   void setQueueLimit(int limit) {
@@ -67,6 +117,9 @@ class TtsService {
     String? username,
   }) async {
     await init();
+    if (!_initialized || _handler == null) {
+      return;
+    }
     await _handler?.setConnectionActive(
       active: active,
       username: username,
@@ -79,31 +132,42 @@ class TtsService {
   }
 
   Future<List<Map<String, String>>> getAvailableVoices() async {
-    final dynamic voices = await _voiceProbe.getVoices;
-    if (voices is! List) {
+    try {
+      return const [];
+    } catch (e) {
+      AppLogger.error('getVoices error', error: e);
       return const [];
     }
-
-    return voices
-        .whereType<Map>()
-        .map(
-          (voice) => voice.map(
-            (key, value) => MapEntry(key.toString(), value.toString()),
-          ),
-        )
-        .where((voice) => voice.containsKey('name'))
-        .toList();
   }
 
   Future<List<String>> getAvailableLanguages() async {
-    final dynamic languages = await _voiceProbe.getLanguages;
-    if (languages is! List) {
+    try {
+      return const ['ja-JP', 'en-US'];
+    } catch (e) {
+      AppLogger.error('getLanguages error', error: e);
       return const [];
     }
-    return languages.map((item) => item.toString()).toList();
   }
 
   int getPriority(CommentModel comment) => comment.priority;
+
+  String _sanitizeText(String text) {
+    if (text.isEmpty) return '';
+
+    var cleaned = text.replaceAll(
+      RegExp(r'https?://[^\s]+'),
+      'URL\u7701\u7565',
+    );
+    cleaned = cleaned.replaceAll(RegExp(r'[wW]{3,}'), '\u7B11');
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'(.)\1{3,}'),
+      (match) => match.group(1)! * 3,
+    );
+    if (cleaned.length > 30) {
+      cleaned = '${cleaned.substring(0, 30)} \u4EE5\u4E0B\u7701\u7565';
+    }
+    return cleaned.trim();
+  }
 
   Future<void> speak(String text) async {
     await enqueue(text, priority: 10);
@@ -114,25 +178,22 @@ class TtsService {
     required int priority,
     Map<String, String>? voice,
   }) async {
-    if (text.trim().isEmpty) {
-      return;
-    }
+    final sanitized = _sanitizeText(text);
+    if (sanitized.isEmpty) return;
 
-    await init();
     _queue.add(
       TtsQueueItem(
-        text: text.trim(),
+        text: sanitized,
         priority: priority,
         voice: voice,
         createdAt: DateTime.now(),
       ),
     );
+
     _trimQueue();
     _sortQueue();
 
-    if (!_isPlaying) {
-      await _playNext();
-    }
+    await _playNext();
   }
 
   Future<void> enqueueFirst(
@@ -140,19 +201,18 @@ class TtsService {
     required int priority,
     Map<String, String>? voice,
   }) async {
-    if (text.trim().isEmpty) {
-      return;
-    }
+    final sanitized = _sanitizeText(text);
+    if (sanitized.isEmpty) return;
 
-    await init();
     _queue.add(
       TtsQueueItem(
-        text: text.trim(),
+        text: sanitized,
         priority: priority + 1000,
         voice: voice,
         createdAt: DateTime.now(),
       ),
     );
+
     _trimQueue();
     _sortQueue();
 
@@ -160,18 +220,24 @@ class TtsService {
       await skip();
       return;
     }
+
     await _playNext();
   }
 
   Future<void> skip() async {
     await init();
-    if (_isSkipping) {
-      return;
-    }
+    if (!_initialized || _handler == null) return;
+
+    if (_isSkipping) return;
+
     _isSkipping = true;
+    _playbackGeneration += 1;
     _isPlaying = false;
+
     await _handler?.stopCurrent();
+
     _isSkipping = false;
+
     await _playNext();
   }
 
@@ -180,18 +246,33 @@ class TtsService {
   }
 
   Future<void> stopAll() async {
+    _cancelPlaybackRetry();
+    _playbackGeneration += 1;
     await init();
+
     _queue.clear();
     _isPlaying = false;
+
     await _handler?.stopCurrent();
   }
 
   Future<void> _playNext() async {
-    if (_isPlaying || _queue.isEmpty) {
-      return;
+    if (_isPlaying || _queue.isEmpty) return;
+
+    if (!_initialized || _handler == null) {
+      await init();
+      if (!_initialized || _handler == null) {
+        AppLogger.warning(
+          'TTS not ready, keeping ${_queue.length} queued items for retry',
+        );
+        _schedulePlaybackRetry();
+        return;
+      }
     }
 
+    _cancelPlaybackRetry();
     final item = _queue.removeAt(0);
+    final playbackGeneration = ++_playbackGeneration;
     _isPlaying = true;
 
     try {
@@ -211,17 +292,40 @@ class TtsService {
         stackTrace: stackTrace,
       );
     } finally {
-      _isPlaying = false;
-      if (_queue.isNotEmpty) {
-        await _playNext();
+      if (_playbackGeneration == playbackGeneration) {
+        _isPlaying = false;
+
+        if (_queue.isNotEmpty) {
+          await _playNext();
+        }
       }
     }
   }
 
+  void _schedulePlaybackRetry() {
+    if (_queue.isEmpty) return;
+    if (_playbackRetryTimer?.isActive ?? false) return;
+
+    final now = DateTime.now();
+    final delay =
+        _nextInitAllowedAt == null || !_nextInitAllowedAt!.isAfter(now)
+        ? const Duration(seconds: 2)
+        : _nextInitAllowedAt!.difference(now);
+
+    _playbackRetryTimer = Timer(delay, () {
+      _playbackRetryTimer = null;
+      unawaited(_playNext());
+    });
+  }
+
+  void _cancelPlaybackRetry() {
+    _playbackRetryTimer?.cancel();
+    _playbackRetryTimer = null;
+  }
+
   void _trimQueue() {
-    if (_queue.length <= _maxQueueLength) {
-      return;
-    }
+    if (_queue.length <= _maxQueueLength) return;
+
     _sortQueue();
     _queue.removeRange(_maxQueueLength, _queue.length);
   }
@@ -229,9 +333,8 @@ class TtsService {
   void _sortQueue() {
     _queue.sort((a, b) {
       final priorityCompare = b.priority.compareTo(a.priority);
-      if (priorityCompare != 0) {
-        return priorityCompare;
-      }
+      if (priorityCompare != 0) return priorityCompare;
+
       return a.createdAt.compareTo(b.createdAt);
     });
   }
