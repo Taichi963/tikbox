@@ -92,9 +92,12 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
   Future<void> setKeepScreenOn(bool value) async {
     await _persist(state.copyWith(keepScreenOn: value));
   }
+
+  Future<void> setGiftVibrationEnabled(bool value) async {
+    await _persist(state.copyWith(giftVibrationEnabled: value));
+  }
 }
 
-final ttsSettingsProvider =
-    NotifierProvider<TtsSettingsNotifier, TtsSettings>(
+final ttsSettingsProvider = NotifierProvider<TtsSettingsNotifier, TtsSettings>(
   TtsSettingsNotifier.new,
 );

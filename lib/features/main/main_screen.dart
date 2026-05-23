@@ -14,6 +14,8 @@ import 'main_provider.dart';
 import 'tts_provider.dart';
 
 const String _lastUsernameKey = 'tikbox_last_username_v1';
+const String _savedUsernamesKey = 'tikbox_saved_usernames_v1';
+const int _maxSavedUsernames = 5;
 
 /// MVP: 接続・TTS・最小設定のコメント一覧のみ
 class MainScreen extends ConsumerStatefulWidget {
@@ -25,35 +27,138 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _cookieController = TextEditingController();
+  List<String> _savedUsernames = const [];
 
   @override
   void initState() {
     super.initState();
-    unawaited(_restoreSavedUsername());
+    unawaited(_restoreSavedUsernames());
   }
 
   @override
   void dispose() {
     _usernameController.dispose();
-    _cookieController.dispose();
     super.dispose();
   }
 
-  Future<void> _restoreSavedUsername() async {
+  Future<void> _restoreSavedUsernames() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedUsername = prefs.getString(_lastUsernameKey)?.trim();
-    if (!mounted || savedUsername == null || savedUsername.isEmpty) {
+    final savedUsernames = _normalizedUsernameList([
+      prefs.getString(_lastUsernameKey),
+      ...?prefs.getStringList(_savedUsernamesKey),
+    ]);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _savedUsernames = savedUsernames;
+    });
+    if (savedUsernames.isEmpty) {
+      return;
+    }
+    await prefs.setStringList(_savedUsernamesKey, savedUsernames);
+    await prefs.setString(_lastUsernameKey, savedUsernames.first);
+    if (!mounted) {
       return;
     }
     if (_usernameController.text.trim().isNotEmpty) {
       return;
     }
-    _usernameController.text = savedUsername;
+    _usernameController.text = savedUsernames.first;
   }
 
   Future<void> _saveUsernameIfNeeded(String rawUsername) async {
-    final normalized = rawUsername
+    final normalized = _normalizeUsername(rawUsername);
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    final updated = _normalizedUsernameList([normalized, ..._savedUsernames]);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastUsernameKey, normalized);
+    await prefs.setStringList(_savedUsernamesKey, updated);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _savedUsernames = updated;
+    });
+  }
+
+  Future<void> _confirmRemoveSavedUsername(String username) async {
+    final shouldRemove = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('ユーザー名を削除しますか？'),
+          content: Text('@$username'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('削除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldRemove == true) {
+      await _removeSavedUsername(username);
+    }
+  }
+
+  Future<void> _removeSavedUsername(String username) async {
+    final normalized = _normalizeUsername(username);
+    final updated = _savedUsernames
+        .where((saved) => saved.toLowerCase() != normalized.toLowerCase())
+        .toList(growable: false);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_savedUsernamesKey, updated);
+    if (updated.isEmpty) {
+      await prefs.remove(_lastUsernameKey);
+    } else {
+      await prefs.setString(_lastUsernameKey, updated.first);
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _savedUsernames = updated;
+    });
+  }
+
+  void _selectSavedUsername(String username) {
+    _usernameController.text = username;
+    _usernameController.selection = TextSelection.collapsed(
+      offset: username.length,
+    );
+  }
+
+  List<String> _normalizedUsernameList(Iterable<String?> rawUsernames) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final rawUsername in rawUsernames) {
+      final normalized = _normalizeUsername(rawUsername ?? '');
+      if (normalized.isEmpty) {
+        continue;
+      }
+      final key = normalized.toLowerCase();
+      if (!seen.add(key)) {
+        continue;
+      }
+      result.add(normalized);
+      if (result.length >= _maxSavedUsernames) {
+        break;
+      }
+    }
+    return result;
+  }
+
+  String _normalizeUsername(String input) {
+    return input
         .trim()
         .replaceAll('@', '')
         .replaceAll(
@@ -62,12 +167,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         )
         .replaceAll(RegExp(r'\?.*$'), '')
         .replaceAll('/', '');
-    if (normalized.isEmpty) {
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastUsernameKey, normalized);
   }
 
   @override
@@ -118,7 +217,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                             children: [
                               Expanded(
                                 child: NeonText(
-                                  isLive ? 'LIVE 接続中' : 'LIVE 接続待機中',
+                                  isLive ? 'ライブ接続中' : 'ライブ接続待機中',
                                   glowColor: isLive
                                       ? const Color(0xFFFF6D91)
                                       : const Color(0xFF72F6FF),
@@ -141,13 +240,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                             decoration: InputDecoration(
-                              labelText: 'TikTok username',
-                              hintText: 'example_user',
+                              labelText: 'TikTok ID (@から始まるID)',
+                              hintText: '例: @jppachi',
+                              helperText: '表示名ではなく @ID を入力',
                               labelStyle: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.75),
                               ),
                               hintStyle: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.34),
+                              ),
+                              helperStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.58),
                               ),
                               filled: true,
                               fillColor: Colors.white.withValues(alpha: 0.05),
@@ -163,37 +266,39 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            controller: _cookieController,
-                            enabled: !liveState.isConnecting && !isLive,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                          if (_savedUsernames.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _savedUsernames.map((username) {
+                                return GestureDetector(
+                                  onLongPress: () =>
+                                      _confirmRemoveSavedUsername(username),
+                                  child: ActionChip(
+                                    label: Text('@$username'),
+                                    labelStyle: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.86),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                    backgroundColor:
+                                        Colors.white.withValues(alpha: 0.05),
+                                    side: BorderSide(
+                                      color: const Color(0xFF72F6FF)
+                                          .withValues(alpha: 0.22),
+                                    ),
+                                    onPressed: liveState.isConnecting || isLive
+                                        ? null
+                                        : () => _selectSavedUsername(
+                                              username,
+                                            ),
+                                  ),
+                                );
+                              }).toList(),
                             ),
-                            decoration: InputDecoration(
-                              labelText: 'Cookie (18+配信のみ必須)',
-                              hintText: 'sessionid=xxx; sid_tt=xxx',
-                              labelStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                              hintStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.34),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.05),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide(
-                                  color: const Color(0xFF72F6FF)
-                                      .withValues(alpha: 0.22),
-                                ),
-                              ),
-                            ),
-                          ),
+                          ],
                           const SizedBox(height: 14),
                           Row(
                             children: [
@@ -213,10 +318,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                     );
                                     await ref
                                         .read(liveProvider.notifier)
-                                        .startLive(
-                                          _usernameController.text,
-                                          cookie: _cookieController.text.trim().isEmpty ? null : _cookieController.text,
-                                        );
+                                        .startLive(_usernameController.text);
                                   },
                                 ),
                               ),
@@ -318,7 +420,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const NeonText(
-                          '読み上げ（最小設定）',
+                          '読み上げ設定',
                           glowColor: Color(0xFFEF6CFF),
                           style: TextStyle(
                             fontSize: 22,
@@ -391,7 +493,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                           onChanged: notifier.setPitch,
                         ),
                         _LabeledSlider(
-                          label: 'TTS音量',
+                          label: '読み上げ音量',
                           valueText: current.ttsVolume.toStringAsFixed(2),
                           value: current.ttsVolume,
                           min: 0.0,
@@ -429,6 +531,26 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                           ),
                         ),
                         SwitchListTile.adaptive(
+                          value: current.giftVibrationEnabled,
+                          onChanged: notifier.setGiftVibrationEnabled,
+                          contentPadding: EdgeInsets.zero,
+                          activeThumbColor: const Color(0xFF72F6FF),
+                          title: const Text(
+                            'ギフト時のバイブレーション',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'ギフト受信時だけ端末を短く振動させます',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.72),
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                        SwitchListTile.adaptive(
                           value: current.keepScreenOn,
                           onChanged: notifier.setKeepScreenOn,
                           contentPadding: EdgeInsets.zero,
@@ -441,7 +563,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                             ),
                           ),
                           subtitle: Text(
-                            'LIVE接続中のみ画面を起こしたままにします',
+                            'ライブ接続中のみ画面を起こしたままにします',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.72),
                               height: 1.35,
@@ -475,9 +597,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       case WsStatus.disconnected:
         return '未接続';
       case WsStatus.connecting:
-        return '接続中';
+        return '接続中...';
       case WsStatus.connected:
-        return '接続済み';
+        return '接続中';
       case WsStatus.error:
         return 'エラー';
     }
@@ -612,10 +734,13 @@ class _RecordingHudState extends State<_RecordingHud> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          if (widget.isLive) const LiveGlowDot() else const Icon(Icons.videocam),
+          if (widget.isLive)
+            const LiveGlowDot()
+          else
+            const Icon(Icons.videocam),
           const SizedBox(width: 10),
           NeonText(
-            widget.isLive ? 'REC  $mm:$ss' : 'STANDBY',
+            widget.isLive ? '配信中  $mm:$ss' : '待機中',
             glowColor: widget.isLive
                 ? const Color(0xFFFF4F7D)
                 : const Color(0xFF6BA8FF),
@@ -678,13 +803,13 @@ class _PrimaryLiveButton extends StatelessWidget {
     final accent = isConnecting
         ? const Color(0xFFFFC64C)
         : isLive
-        ? const Color(0xFFFF4F7D)
-        : const Color(0xFF58F5D1);
+            ? const Color(0xFFFF4F7D)
+            : const Color(0xFF58F5D1);
     final label = isConnecting
-        ? 'Cancel Connect'
+        ? '接続をキャンセル'
         : isLive
-        ? 'Stop Live'
-        : 'Connect Live';
+            ? '停止'
+            : '接続開始';
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),

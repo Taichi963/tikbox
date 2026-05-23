@@ -26,6 +26,7 @@ class TtsSettings {
   final String language;
   final SoundPreset soundPreset;
   final bool keepScreenOn;
+  final bool giftVibrationEnabled;
   final bool broadcastModeEnabled;
   final Map<String, String>? commentVoice;
   final Map<String, String>? giftVoice;
@@ -39,6 +40,7 @@ class TtsSettings {
     this.language = 'ja-JP',
     this.soundPreset = SoundPreset.balanced,
     this.keepScreenOn = true,
+    this.giftVibrationEnabled = false,
     this.broadcastModeEnabled = false,
     this.commentVoice,
     this.giftVoice,
@@ -53,6 +55,7 @@ class TtsSettings {
     String? language,
     SoundPreset? soundPreset,
     bool? keepScreenOn,
+    bool? giftVibrationEnabled,
     bool? broadcastModeEnabled,
     Map<String, String>? commentVoice,
     Map<String, String>? giftVoice,
@@ -68,8 +71,8 @@ class TtsSettings {
       language: language ?? this.language,
       soundPreset: soundPreset ?? this.soundPreset,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
-      broadcastModeEnabled:
-          broadcastModeEnabled ?? this.broadcastModeEnabled,
+      giftVibrationEnabled: giftVibrationEnabled ?? this.giftVibrationEnabled,
+      broadcastModeEnabled: broadcastModeEnabled ?? this.broadcastModeEnabled,
       commentVoice:
           clearCommentVoice ? null : (commentVoice ?? this.commentVoice),
       giftVoice: clearGiftVoice ? null : (giftVoice ?? this.giftVoice),
@@ -115,6 +118,7 @@ class TtsSettings {
       'language': language,
       'soundPreset': soundPreset.storageKey,
       'keepScreenOn': keepScreenOn,
+      'giftVibrationEnabled': giftVibrationEnabled,
       'broadcastModeEnabled': broadcastModeEnabled,
       'commentVoice': commentVoice,
       'giftVoice': giftVoice,
@@ -142,6 +146,7 @@ class TtsSettings {
         json['soundPreset']?.toString(),
       ),
       keepScreenOn: json['keepScreenOn'] as bool? ?? true,
+      giftVibrationEnabled: json['giftVibrationEnabled'] as bool? ?? false,
       broadcastModeEnabled: json['broadcastModeEnabled'] as bool? ?? false,
       commentVoice: parseVoice(json['commentVoice']),
       giftVoice: parseVoice(json['giftVoice']),

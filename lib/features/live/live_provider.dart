@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:piratetok_live/piratetok_live.dart';
 import 'package:uuid/uuid.dart';
 
@@ -50,16 +51,18 @@ class LiveState {
 class LiveNotifier extends Notifier<LiveState> {
   static const int _maxAutoReconnectAttempts = 6;
   static const int _maxReconnectDelaySeconds = 16;
+  static const int _mediumGiftVibrationThreshold = 10;
+  static const int _highGiftVibrationThreshold = 100;
 
   final Uuid _uuid = const Uuid();
 
   TikTokLiveClient? _client;
   String? _username;
-  String? _cookie;
   Timer? _reconnectTimer;
   bool _disposed = false;
   bool _manualStopRequested = false;
   int _autoReconnectAttempts = 0;
+  DateTime? _connectRequestedAt;
 
   DateTime? _lastGiftTime;
   int _comboStreak = 0;
@@ -70,13 +73,13 @@ class LiveNotifier extends Notifier<LiveState> {
     return const LiveState();
   }
 
-  Future<void> startLive(String rawUsername, {String? cookie}) async {
+  Future<void> startLive(String rawUsername) async {
     final username = _normalizeUsername(rawUsername);
     if (username.isEmpty) {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: 'Please enter a username',
+        errorMessage: 'ユーザー名を入力してください',
       );
       return;
     }
@@ -86,11 +89,9 @@ class LiveNotifier extends Notifier<LiveState> {
     }
 
     _username = username;
-    _cookie = cookie;
     _manualStopRequested = false;
     _resetReconnectState();
     _resetGiftComboState();
-    await effectSoundService.primeForPlayback();
 
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
@@ -99,8 +100,10 @@ class LiveNotifier extends Notifier<LiveState> {
       clearError: true,
     );
 
+    _connectRequestedAt = DateTime.now();
     AppLogger.info('Starting native TikTok connection for @$username');
-    _connectNative(username, cookie: cookie);
+    _connectNative(username);
+    unawaited(effectSoundService.primeForPlayback());
   }
 
   Future<void> retryConnection() async {
@@ -108,7 +111,7 @@ class LiveNotifier extends Notifier<LiveState> {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: 'No live target to reconnect',
+        errorMessage: '再接続するユーザー名がありません',
       );
       return;
     }
@@ -116,14 +119,15 @@ class LiveNotifier extends Notifier<LiveState> {
     _manualStopRequested = false;
     _resetReconnectState();
     _resetGiftComboState();
-    await effectSoundService.primeForPlayback();
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
       reconnectAttempts: 0,
       clearError: true,
     );
-    _connectNative(_username!, cookie: _cookie);
+    _connectRequestedAt = DateTime.now();
+    _connectNative(_username!);
+    unawaited(effectSoundService.primeForPlayback());
   }
 
   Future<void> stopLive() async {
@@ -132,7 +136,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _autoReconnectAttempts = 0;
     _resetGiftComboState();
     _username = null;
-    _cookie = null;
+    _connectRequestedAt = null;
     final previousClient = _client;
     _client = null;
     previousClient?.disconnect();
@@ -160,7 +164,7 @@ class LiveNotifier extends Notifier<LiveState> {
       return;
     }
 
-    await effectSoundService.primeForPlayback();
+    unawaited(effectSoundService.primeForPlayback());
     unawaited(
       ttsService.setConnectionActive(
         active: state.wsStatus == WsStatus.connected || state.isConnecting,
@@ -173,22 +177,19 @@ class LiveNotifier extends Notifier<LiveState> {
       AppLogger.info(
         'App resumed while reconnect was pending, retrying for @$_username',
       );
-      _connectNative(_username!, cookie: _cookie);
+      _connectRequestedAt = DateTime.now();
+      _connectNative(_username!);
     }
   }
 
-  void _connectNative(String username, {String? cookie}) {
+  void _connectNative(String username) {
     _cancelReconnectTimer();
     final previousClient = _client;
     _client = null;
     previousClient?.disconnect();
     _manualStopRequested = false;
-    _cookie = cookie ?? _cookie;
 
     final client = TikTokLiveClient(username);
-    if (_cookie != null && _cookie!.isNotEmpty) {
-      client.cookies(_cookie!);
-    }
     _client = client;
 
     client.on(EventType.connected, (evt) {
@@ -209,7 +210,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     client.on('error', (evt) {
       if (_disposed || !identical(_client, client)) return;
-      _handleStatusError(evt.data?['error']?.toString() ?? 'Unknown error');
+      _handleStatusError(evt.data?['error']?.toString() ?? '不明なエラーが発生しました');
     });
 
     client.on(EventType.chat, (evt) {
@@ -217,8 +218,7 @@ class LiveNotifier extends Notifier<LiveState> {
       final data = evt.data;
       if (data == null) return;
 
-      final nickname =
-          data['user']?['nickname']?.toString() ??
+      final nickname = data['user']?['nickname']?.toString() ??
           data['user']?['uniqueId']?.toString() ??
           '?';
       final content = data['content']?.toString() ?? '';
@@ -231,12 +231,11 @@ class LiveNotifier extends Notifier<LiveState> {
       final data = evt.data;
       if (data == null) return;
 
-      final nickname =
-          data['user']?['nickname']?.toString() ??
+      final nickname = data['user']?['nickname']?.toString() ??
           data['user']?['uniqueId']?.toString() ??
           '?';
       final giftMap = data['gift'] as Map<String, dynamic>? ?? {};
-      final giftName = giftMap['name']?.toString() ?? 'Gift';
+      final giftName = giftMap['name']?.toString() ?? 'ギフト';
       final repeatCount = _toInt(data['repeatCount']);
       final diamondCount = _toInt(giftMap['diamondCount']);
 
@@ -249,7 +248,7 @@ class LiveNotifier extends Notifier<LiveState> {
           return '';
         }
         AppLogger.error('TikTok connection failed totally', error: error);
-        _handleStatusError('Live was not found or the connection failed');
+        _handleStatusError('ライブが見つからないか、接続に失敗しました');
         return '';
       }),
     );
@@ -260,6 +259,10 @@ class LiveNotifier extends Notifier<LiveState> {
 
     _manualStopRequested = false;
     _resetReconnectState();
+    final elapsedMs = _connectRequestedAt == null
+        ? null
+        : DateTime.now().difference(_connectRequestedAt!).inMilliseconds;
+    _connectRequestedAt = null;
     unawaited(
       ttsService.setConnectionActive(
         active: true,
@@ -274,7 +277,11 @@ class LiveNotifier extends Notifier<LiveState> {
       reconnectAttempts: 0,
       clearError: true,
     );
-    AppLogger.info('TikTok live natively connected for @$_username');
+    AppLogger.info(
+      elapsedMs == null
+          ? 'TikTok live natively connected for @$_username'
+          : 'TikTok live natively connected for @$_username in ${elapsedMs}ms',
+    );
   }
 
   void _handleStatusDisconnected() {
@@ -302,17 +309,16 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
-      errorMessage: 'Connection lost. Waiting for reconnect',
+      errorMessage: '接続が切れました。再接続を待機しています',
     );
-    _scheduleReconnect('Connection lost');
+    _scheduleReconnect('接続が切れました');
   }
 
   void _handleStatusReconnecting(int attempt) {
     if (_disposed) return;
 
-    final trackedAttempt = attempt > state.reconnectAttempts
-        ? attempt
-        : state.reconnectAttempts;
+    final trackedAttempt =
+        attempt > state.reconnectAttempts ? attempt : state.reconnectAttempts;
 
     unawaited(
       ttsService.setConnectionActive(
@@ -324,8 +330,7 @@ class LiveNotifier extends Notifier<LiveState> {
       wsStatus: WsStatus.connecting,
       isConnecting: true,
       reconnectAttempts: trackedAttempt,
-      errorMessage:
-          'Reconnecting... ($trackedAttempt/$_maxAutoReconnectAttempts)',
+      errorMessage: '再接続中... ($trackedAttempt/$_maxAutoReconnectAttempts)',
     );
   }
 
@@ -411,12 +416,33 @@ class LiveNotifier extends Notifier<LiveState> {
     );
 
     final settings = ref.read(ttsSettingsProvider);
+    if (settings.giftVibrationEnabled) {
+      unawaited(_playGiftVibration(soundValue));
+    }
     final preferredGiftVoice = settings.giftVoice ?? settings.commentVoice;
     _enqueueGiftTts(
       comment,
       value: soundValue,
       voice: preferredGiftVoice,
     );
+  }
+
+  Future<void> _playGiftVibration(int value) async {
+    try {
+      if (value >= _highGiftVibrationThreshold) {
+        await HapticFeedback.heavyImpact();
+      } else if (value >= _mediumGiftVibrationThreshold) {
+        await HapticFeedback.mediumImpact();
+      } else {
+        await HapticFeedback.lightImpact();
+      }
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'Gift vibration failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   void _enqueueCommentTts(
@@ -426,7 +452,9 @@ class LiveNotifier extends Notifier<LiveState> {
     final sourceClient = _client;
     unawaited(
       Future<void>.delayed(effectSoundService.commentTtsLeadIn, () async {
-        if (_disposed || _manualStopRequested || !identical(_client, sourceClient)) {
+        if (_disposed ||
+            _manualStopRequested ||
+            !identical(_client, sourceClient)) {
           return;
         }
         await ttsService.enqueue(
@@ -446,7 +474,9 @@ class LiveNotifier extends Notifier<LiveState> {
     final sourceClient = _client;
     unawaited(
       Future<void>.delayed(effectSoundService.giftTtsLeadIn(value), () async {
-        if (_disposed || _manualStopRequested || !identical(_client, sourceClient)) {
+        if (_disposed ||
+            _manualStopRequested ||
+            !identical(_client, sourceClient)) {
           return;
         }
         await ttsService.enqueueFirst(
@@ -462,6 +492,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _disposed = true;
     _manualStopRequested = true;
     _cancelReconnectTimer();
+    _connectRequestedAt = null;
     _resetGiftComboState();
     final previousClient = _client;
     _client = null;
@@ -486,13 +517,13 @@ class LiveNotifier extends Notifier<LiveState> {
 
     _autoReconnectAttempts = nextAttempt;
     final delay = _reconnectDelayForAttempt(nextAttempt);
+    _connectRequestedAt = DateTime.now().add(delay);
 
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
       reconnectAttempts: nextAttempt,
-      errorMessage:
-          '$reason. Retrying in ${delay.inSeconds}s '
+      errorMessage: '$reason。${delay.inSeconds}秒後に再接続します '
           '($nextAttempt/$_maxAutoReconnectAttempts)',
     );
 
@@ -506,7 +537,7 @@ class LiveNotifier extends Notifier<LiveState> {
       if (_disposed || _manualStopRequested || _username == null) {
         return;
       }
-      _connectNative(_username!, cookie: _cookie);
+      _connectNative(_username!);
     });
   }
 
@@ -518,9 +549,8 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.error,
       isConnecting: false,
-      errorMessage:
-          '$reason. Reconnect limit reached '
-          '($_maxAutoReconnectAttempts attempts)',
+      errorMessage: '$reason。再接続の上限に達しました '
+          '($_maxAutoReconnectAttempts回)',
     );
   }
 

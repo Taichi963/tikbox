@@ -36,7 +36,8 @@ class SpokenItem {
   });
 }
 
-class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
+class TikBoxAudioHandler extends BaseAudioHandler
+    with QueueHandler, SeekHandler {
   final FlutterTts _tts = FlutterTts();
 
   bool _initialized = false;
@@ -46,8 +47,11 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   String? _connectedUsername;
   SpokenItem? _currentItem;
   AudioPlayer? _keepAlivePlayer;
+  StreamSubscription<PlayerState>? _keepAliveStateSubscription;
+  PlayerState? _lastLoggedKeepAlivePlayerState;
   bool _keepAlivePrepared = false;
   bool _keepAliveRunning = false;
+  bool _keepAliveRestartScheduled = false;
   Future<void> _keepAliveSync = Future<void>.value();
 
   Future<void> ensureInitialized() async {
@@ -66,12 +70,14 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     );
 
     _tts.setStartHandler(() {
+      AppLogger.info('Background TTS start');
       _speechRequestInFlight = false;
       _isSpeaking = true;
       _publishState();
     });
 
     _tts.setCompletionHandler(() {
+      AppLogger.info('Background TTS complete');
       _speechRequestInFlight = false;
       _isSpeaking = false;
       _currentItem = null;
@@ -188,6 +194,7 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     String? username,
   }) async {
     await ensureInitialized();
+    AppLogger.info('Background connection active: $active');
     _connectionActive = active;
     _connectedUsername = active ? username : null;
     if (!active) {
@@ -295,7 +302,7 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   Future<void> _startKeepAlivePlayback() async {
-    if (_keepAliveRunning) {
+    if (_keepAliveRunning && _keepAlivePlayer?.state == PlayerState.playing) {
       return;
     }
 
@@ -307,15 +314,20 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     await _keepAlivePlayer!.setVolume(_keepAliveVolume);
     await _keepAlivePlayer!.resume();
     _keepAliveRunning = true;
+    AppLogger.info('Background keep-alive start');
   }
 
   Future<void> _stopKeepAlivePlayback() async {
-    if (_keepAlivePlayer == null || !_keepAliveRunning) {
+    if (_keepAlivePlayer == null) {
+      return;
+    }
+    if (!_keepAliveRunning && _keepAlivePlayer!.state != PlayerState.playing) {
       return;
     }
 
     await _keepAlivePlayer!.stop();
     _keepAliveRunning = false;
+    AppLogger.info('Background keep-alive stop');
   }
 
   Future<void> _ensureKeepAlivePlayer() async {
@@ -349,6 +361,8 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
           mimeType: _keepAliveMimeType,
         ),
       );
+      _keepAliveStateSubscription ??=
+          player.onPlayerStateChanged.listen(_handleKeepAlivePlayerState);
       _keepAlivePlayer = player;
       _keepAlivePrepared = true;
     } catch (_) {
@@ -359,6 +373,57 @@ class TikBoxAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
       }
       rethrow;
     }
+  }
+
+  void _handleKeepAlivePlayerState(PlayerState state) {
+    if (_lastLoggedKeepAlivePlayerState != state) {
+      _lastLoggedKeepAlivePlayerState = state;
+      AppLogger.info('Background keep-alive player state: ${state.name}');
+    }
+    if (state == PlayerState.playing) {
+      _keepAliveRunning = true;
+      return;
+    }
+    if (state == PlayerState.disposed) {
+      _keepAliveRunning = false;
+      _keepAlivePrepared = false;
+      _keepAlivePlayer = null;
+      final subscription = _keepAliveStateSubscription;
+      _keepAliveStateSubscription = null;
+      _lastLoggedKeepAlivePlayerState = null;
+      unawaited(subscription?.cancel());
+      if (_connectionActive && !_isSpeaking && !_speechRequestInFlight) {
+        _scheduleKeepAliveRestart(state);
+      }
+      return;
+    }
+    if (state == PlayerState.stopped || state == PlayerState.completed) {
+      _keepAliveRunning = false;
+      if (_connectionActive && !_isSpeaking && !_speechRequestInFlight) {
+        _scheduleKeepAliveRestart(state);
+      }
+    }
+  }
+
+  void _scheduleKeepAliveRestart(PlayerState state) {
+    if (_keepAliveRestartScheduled) {
+      return;
+    }
+    _keepAliveRestartScheduled = true;
+    AppLogger.warning(
+      'Background keep-alive became ${state.name}; scheduling restart',
+    );
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 500), () async {
+        _keepAliveRestartScheduled = false;
+        if (_connectionActive &&
+            !_isSpeaking &&
+            !_speechRequestInFlight &&
+            _keepAlivePlayer?.state != PlayerState.playing) {
+          await _queueKeepAliveSync();
+        }
+      }),
+    );
   }
 }
 
@@ -376,11 +441,10 @@ Uint8List _buildKeepAliveWav() {
     final fade = progress < 0.02
         ? progress / 0.02
         : progress > 0.98
-        ? (1.0 - progress) / 0.02
-        : 1.0;
-    final sample = math.sin((2 * math.pi * frequency * i) / sampleRate) *
-        amplitude *
-        fade;
+            ? (1.0 - progress) / 0.02
+            : 1.0;
+    final sample =
+        math.sin((2 * math.pi * frequency * i) / sampleRate) * amplitude * fade;
     pcm[i] = _toPcm16(sample);
   }
 

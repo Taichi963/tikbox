@@ -207,7 +207,8 @@ class EffectSoundService {
 
     try {
       final stop = await pool.start(
-        volume: (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0),
+        volume:
+            (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0),
       );
       unawaited(
         Future<void>.delayed(tone.duration + _poolStopPadding, () async {
@@ -287,7 +288,7 @@ class EffectSoundService {
 
   Future<void> _playSmallGiftCombo(double randomVal, int comboTier) async {
     if (comboTier == 1) {
-      if (randomVal < 0.05) {
+      if (randomVal < 0.03) {
         await _playTone('rare_small');
       } else {
         await _playTone('small_combo_3_4');
@@ -296,7 +297,7 @@ class EffectSoundService {
     }
 
     if (comboTier == 2) {
-      if (randomVal < 0.08) {
+      if (randomVal < 0.04) {
         await _playTone('rare_small');
       } else {
         await _playTone('small_combo_5_9');
@@ -310,7 +311,7 @@ class EffectSoundService {
     }
 
     await _playTone('small_combo_10');
-    if (randomVal < 0.14) {
+    if (randomVal < 0.06) {
       _playToneAfter(
         const Duration(milliseconds: 36),
         'rare_small',
@@ -327,7 +328,7 @@ class EffectSoundService {
 
   Future<void> _playMediumGiftCombo(double randomVal, int comboTier) async {
     if (comboTier == 0) {
-      if (randomVal < 0.05) {
+      if (randomVal < 0.03) {
         await _playTone('rare_medium');
       } else {
         await _playTone('medium');
@@ -336,7 +337,7 @@ class EffectSoundService {
     }
 
     if (comboTier == 1) {
-      if (randomVal < 0.06) {
+      if (randomVal < 0.04) {
         await _playTone('rare_medium');
       } else {
         await _playTone('medium_combo_3_4');
@@ -345,7 +346,7 @@ class EffectSoundService {
     }
 
     if (comboTier == 2) {
-      if (randomVal < 0.09) {
+      if (randomVal < 0.05) {
         await _playTone('rare_medium');
       } else {
         await _playTone('medium_combo_5_9');
@@ -358,7 +359,7 @@ class EffectSoundService {
       return;
     }
 
-    if (randomVal < 0.11) {
+    if (randomVal < 0.06) {
       await _playTone('rare_medium');
     } else {
       await _playTone('medium_combo_10');
@@ -372,7 +373,7 @@ class EffectSoundService {
 
   Future<void> _playHighGiftCombo(double randomVal, int comboTier) async {
     if (comboTier == 0) {
-      if (randomVal < 0.05) {
+      if (randomVal < 0.03) {
         await _playTone('rare_large');
       } else {
         await _playTone('large');
@@ -381,7 +382,7 @@ class EffectSoundService {
     }
 
     if (comboTier == 1) {
-      if (randomVal < 0.06) {
+      if (randomVal < 0.04) {
         await _playTone('rare_large');
       } else {
         await _playTone('large_combo_3_4');
@@ -390,7 +391,7 @@ class EffectSoundService {
     }
 
     if (comboTier == 2) {
-      if (randomVal < 0.08) {
+      if (randomVal < 0.05) {
         await _playTone('rare_large');
       } else {
         await _playTone('large_combo_5_9');
@@ -403,7 +404,7 @@ class EffectSoundService {
       return;
     }
 
-    if (randomVal < 0.10) {
+    if (randomVal < 0.06) {
       await _playTone('rare_large');
     } else {
       await _playTone('large_combo_10');
@@ -432,30 +433,30 @@ class EffectSoundService {
 
   double _resolvedVolumeForTone(String toneName) {
     final categoryScale = toneName == 'comment'
-        ? 0.72
+        ? 0.68
         : toneName == 'rare_small'
-        ? 0.92
-        : toneName == 'rare_medium' || toneName.startsWith('medium')
-        ? 0.96
-        : toneName == 'rare_large' || toneName.startsWith('large')
-        ? 1.0
-        : toneName.startsWith('small')
-        ? 0.88
-        : 1.0;
+            ? 0.82
+            : toneName == 'rare_medium' || toneName.startsWith('medium')
+                ? 0.90
+                : toneName == 'rare_large' || toneName.startsWith('large')
+                    ? 0.94
+                    : toneName.startsWith('small')
+                        ? 0.84
+                        : 1.0;
 
     final ttsDuckScale = !ttsService.isPlaying
         ? 1.0
         : toneName == 'comment'
-        ? 0.55
-        : toneName == 'rare_small'
-        ? 0.76
-        : toneName == 'rare_medium' || toneName.startsWith('medium')
-        ? 0.86
-        : toneName == 'rare_large' || toneName.startsWith('large')
-        ? 0.92
-        : toneName.startsWith('small')
-        ? 0.74
-        : 0.85;
+            ? 0.50
+            : toneName == 'rare_small'
+                ? 0.66
+                : toneName == 'rare_medium' || toneName.startsWith('medium')
+                    ? 0.78
+                    : toneName == 'rare_large' || toneName.startsWith('large')
+                        ? 0.84
+                        : toneName.startsWith('small')
+                            ? 0.68
+                            : 0.85;
 
     return (_volume * categoryScale * ttsDuckScale).clamp(0.0, 1.0);
   }
@@ -499,35 +500,35 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildSmallCrystal() {
     return _generateTone(
       const [
-        _ToneNote(720, 0.024, 0.34),
-        _ToneNote(960, 0.046, 0.40),
+        _ToneNote(880, 0.020, 0.30),
+        _ToneNote(1180, 0.042, 0.38),
       ],
       0.002,
-      0.018,
-      0.08,
+      0.014,
+      0.10,
     );
   }
 
   static _GeneratedEffectTone _buildSmallBubble() {
     return _generateTone(
       const [
-        _ToneNote(540, 0.03, 0.30),
-        _ToneNote(720, 0.035, 0.24),
+        _ToneNote(760, 0.024, 0.26),
+        _ToneNote(980, 0.032, 0.30),
       ],
       0.002,
       0.01,
-      0.05,
+      0.06,
     );
   }
 
   static _GeneratedEffectTone _buildSmallCoin() {
     return _generateTone(
       const [
-        _ToneNote(660, 0.02, 0.30),
-        _ToneNote(880, 0.055, 0.38),
+        _ToneNote(900, 0.018, 0.28),
+        _ToneNote(1260, 0.044, 0.36),
       ],
       0.001,
-      0.016,
+      0.014,
       0.12,
     );
   }
@@ -546,8 +547,8 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildSmallComboTier1() {
     return _generateTone(
       const [
-        _ToneNote(760, 0.022, 0.34),
-        _ToneNote(1020, 0.042, 0.40),
+        _ToneNote(880, 0.020, 0.30),
+        _ToneNote(1220, 0.038, 0.40),
       ],
       0.001,
       0.012,
@@ -559,9 +560,9 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildSmallComboTier2() {
     return _generateTone(
       const [
-        _ToneNote(760, 0.020, 0.30),
-        _ToneNote(960, 0.024, 0.34),
-        _ToneNote(1180, 0.036, 0.42),
+        _ToneNote(820, 0.018, 0.28),
+        _ToneNote(1080, 0.022, 0.32),
+        _ToneNote(1380, 0.034, 0.42),
       ],
       0.001,
       0.012,
@@ -573,10 +574,10 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildSmallComboTier3() {
     return _generateTone(
       const [
-        _ToneNote(820, 0.018, 0.28),
-        _ToneNote(1040, 0.022, 0.32),
-        _ToneNote(1310, 0.030, 0.40),
-        _ToneNote(1560, 0.040, 0.46),
+        _ToneNote(920, 0.016, 0.26),
+        _ToneNote(1180, 0.020, 0.30),
+        _ToneNote(1520, 0.028, 0.38),
+        _ToneNote(1880, 0.034, 0.46),
       ],
       0.001,
       0.012,
@@ -588,41 +589,41 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildRareSmallHit() {
     return _generateTone(
       const [
-        _ToneNote(150, 0.02, 0.6),
-        _ToneNote(300, 0.02, 0.5),
-        _ToneNote(450, 0.04, 0.4),
+        _ToneNote(980, 0.018, 0.34),
+        _ToneNote(1320, 0.022, 0.38),
+        _ToneNote(1760, 0.050, 0.42),
       ],
       0.001,
-      0.01,
-      0.8,
+      0.018,
+      0.18,
     );
   }
 
   static _GeneratedEffectTone _buildMediumLevelUp() {
     return _generateTone(
       const [
-        _ToneNote(523, 0.05, 0.28),
-        _ToneNote(659, 0.05, 0.34),
-        _ToneNote(784, 0.07, 0.38),
-        _ToneNote(1046, 0.11, 0.46),
+        _ToneNote(660, 0.036, 0.25),
+        _ToneNote(880, 0.040, 0.30),
+        _ToneNote(1174, 0.050, 0.36),
+        _ToneNote(1568, 0.068, 0.42),
       ],
       0.003,
-      0.03,
-      0.18,
+      0.024,
+      0.16,
     );
   }
 
   static _GeneratedEffectTone _buildMediumComboTier1() {
     return _generateTone(
       const [
-        _ToneNote(550, 0.046, 0.28),
-        _ToneNote(698, 0.046, 0.34),
-        _ToneNote(880, 0.060, 0.38),
-        _ToneNote(1174, 0.090, 0.46),
+        _ToneNote(740, 0.034, 0.24),
+        _ToneNote(988, 0.036, 0.30),
+        _ToneNote(1318, 0.046, 0.36),
+        _ToneNote(1760, 0.062, 0.44),
       ],
       0.003,
-      0.026,
-      0.20,
+      0.022,
+      0.18,
       interNoteGap: 0.003,
     );
   }
@@ -630,15 +631,15 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildMediumComboTier2() {
     return _generateTone(
       const [
-        _ToneNote(587, 0.040, 0.28),
-        _ToneNote(740, 0.040, 0.34),
-        _ToneNote(932, 0.052, 0.38),
-        _ToneNote(1174, 0.070, 0.44),
-        _ToneNote(1396, 0.085, 0.48),
+        _ToneNote(784, 0.030, 0.24),
+        _ToneNote(1046, 0.032, 0.30),
+        _ToneNote(1318, 0.040, 0.36),
+        _ToneNote(1568, 0.050, 0.42),
+        _ToneNote(1976, 0.064, 0.48),
       ],
       0.002,
-      0.024,
-      0.20,
+      0.020,
+      0.18,
       interNoteGap: 0.002,
     );
   }
@@ -646,15 +647,15 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildMediumComboTier3() {
     return _generateTone(
       const [
-        _ToneNote(622, 0.038, 0.28),
-        _ToneNote(784, 0.038, 0.34),
-        _ToneNote(988, 0.048, 0.38),
-        _ToneNote(1244, 0.062, 0.44),
-        _ToneNote(1568, 0.080, 0.50),
+        _ToneNote(880, 0.028, 0.24),
+        _ToneNote(1174, 0.030, 0.30),
+        _ToneNote(1480, 0.038, 0.36),
+        _ToneNote(1760, 0.046, 0.42),
+        _ToneNote(2217, 0.058, 0.50),
       ],
       0.002,
-      0.022,
-      0.22,
+      0.020,
+      0.20,
       interNoteGap: 0.002,
     );
   }
@@ -662,47 +663,45 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildRareFever() {
     return _generateTone(
       const [
-        _ToneNote(880, 0.04, 0.4),
-        _ToneNote(1046, 0.04, 0.4),
-        _ToneNote(880, 0.04, 0.4),
-        _ToneNote(1046, 0.04, 0.4),
-        _ToneNote(1318, 0.1, 0.5),
+        _ToneNote(1046, 0.028, 0.34),
+        _ToneNote(1318, 0.028, 0.36),
+        _ToneNote(1046, 0.028, 0.32),
+        _ToneNote(1568, 0.036, 0.40),
+        _ToneNote(2093, 0.070, 0.48),
       ],
       0.002,
-      0.05,
-      0.4,
+      0.030,
+      0.24,
     );
   }
 
   static _GeneratedEffectTone _buildLargeFanfare() {
     return _generateTone(
       const [
-        _ToneNote(392, 0.07, 0.24),
-        _ToneNote(523, 0.07, 0.30),
-        _ToneNote(659, 0.08, 0.36),
-        _ToneNote(784, 0.08, 0.40),
-        _ToneNote(1046, 0.10, 0.46),
-        _ToneNote(1396, 0.24, 0.52),
+        _ToneNote(587, 0.045, 0.22),
+        _ToneNote(784, 0.050, 0.28),
+        _ToneNote(988, 0.056, 0.34),
+        _ToneNote(1318, 0.064, 0.40),
+        _ToneNote(1661, 0.095, 0.48),
       ],
-      0.004,
-      0.05,
-      0.2,
+      0.003,
+      0.035,
+      0.18,
     );
   }
 
   static _GeneratedEffectTone _buildLargeComboTier1() {
     return _generateTone(
       const [
-        _ToneNote(415, 0.065, 0.24),
-        _ToneNote(554, 0.065, 0.30),
-        _ToneNote(698, 0.074, 0.36),
-        _ToneNote(830, 0.074, 0.40),
-        _ToneNote(1108, 0.090, 0.46),
-        _ToneNote(1478, 0.200, 0.52),
+        _ToneNote(622, 0.042, 0.22),
+        _ToneNote(830, 0.046, 0.28),
+        _ToneNote(1046, 0.052, 0.34),
+        _ToneNote(1396, 0.060, 0.40),
+        _ToneNote(1760, 0.105, 0.50),
       ],
-      0.004,
-      0.050,
-      0.22,
+      0.003,
+      0.034,
+      0.20,
       interNoteGap: 0.003,
     );
   }
@@ -710,16 +709,15 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildLargeComboTier2() {
     return _generateTone(
       const [
-        _ToneNote(440, 0.060, 0.24),
-        _ToneNote(587, 0.060, 0.30),
-        _ToneNote(740, 0.070, 0.36),
-        _ToneNote(880, 0.070, 0.40),
-        _ToneNote(1174, 0.080, 0.46),
-        _ToneNote(1568, 0.180, 0.52),
+        _ToneNote(659, 0.038, 0.22),
+        _ToneNote(880, 0.044, 0.28),
+        _ToneNote(1174, 0.050, 0.34),
+        _ToneNote(1568, 0.058, 0.40),
+        _ToneNote(1976, 0.118, 0.52),
       ],
-      0.004,
-      0.040,
-      0.22,
+      0.003,
+      0.032,
+      0.20,
       interNoteGap: 0.003,
     );
   }
@@ -727,28 +725,27 @@ class EffectSoundService {
   static _GeneratedEffectTone _buildLargeComboTier3() {
     return _generateTone(
       const [
-        _ToneNote(466, 0.050, 0.24),
-        _ToneNote(622, 0.050, 0.28),
-        _ToneNote(784, 0.060, 0.34),
-        _ToneNote(932, 0.060, 0.38),
-        _ToneNote(1174, 0.070, 0.42),
-        _ToneNote(1396, 0.080, 0.48),
-        _ToneNote(1760, 0.140, 0.54),
+        _ToneNote(740, 0.034, 0.22),
+        _ToneNote(988, 0.038, 0.28),
+        _ToneNote(1318, 0.046, 0.34),
+        _ToneNote(1661, 0.052, 0.40),
+        _ToneNote(2093, 0.064, 0.46),
+        _ToneNote(2489, 0.120, 0.54),
       ],
-      0.004,
-      0.038,
-      0.24,
+      0.003,
+      0.032,
+      0.22,
       interNoteGap: 0.002,
     );
   }
 
   static _GeneratedEffectTone _buildRareJackpot() {
     final List<_ToneNote> n = [];
-    for (int i = 0; i < 8; i++) {
-      n.add(_ToneNote(1200 + (i % 2) * 300, 0.03, 0.4));
+    for (int i = 0; i < 6; i++) {
+      n.add(_ToneNote(1400 + (i % 2) * 360, 0.024, 0.34));
     }
-    n.add(const _ToneNote(1800, 0.15, 0.5));
-    return _generateTone(n, 0.002, 0.05, 0.3);
+    n.add(const _ToneNote(2350, 0.090, 0.50));
+    return _generateTone(n, 0.002, 0.035, 0.26);
   }
 
   static Duration _sequenceDuration(
