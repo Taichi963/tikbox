@@ -103,7 +103,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _connectRequestedAt = DateTime.now();
     AppLogger.info('Starting native TikTok connection for @$username');
     _connectNative(username);
-    unawaited(effectSoundService.primeForPlayback());
+    _primeEffectSoundAfterConnectStart();
   }
 
   Future<void> retryConnection() async {
@@ -127,7 +127,7 @@ class LiveNotifier extends Notifier<LiveState> {
     );
     _connectRequestedAt = DateTime.now();
     _connectNative(_username!);
-    unawaited(effectSoundService.primeForPlayback());
+    _primeEffectSoundAfterConnectStart();
   }
 
   Future<void> stopLive() async {
@@ -164,14 +164,6 @@ class LiveNotifier extends Notifier<LiveState> {
       return;
     }
 
-    unawaited(effectSoundService.primeForPlayback());
-    unawaited(
-      ttsService.setConnectionActive(
-        active: state.wsStatus == WsStatus.connected || state.isConnecting,
-        username: _username,
-      ),
-    );
-
     if (state.wsStatus == WsStatus.connecting &&
         !(_reconnectTimer?.isActive ?? false)) {
       AppLogger.info(
@@ -180,6 +172,22 @@ class LiveNotifier extends Notifier<LiveState> {
       _connectRequestedAt = DateTime.now();
       _connectNative(_username!);
     }
+
+    _primeEffectSoundAfterConnectStart();
+    unawaited(
+      ttsService.setConnectionActive(
+        active: state.wsStatus == WsStatus.connected || state.isConnecting,
+        username: _username,
+      ),
+    );
+  }
+
+  void _primeEffectSoundAfterConnectStart() {
+    unawaited(
+      Future<void>(() async {
+        await effectSoundService.primeForPlayback();
+      }),
+    );
   }
 
   void _connectNative(String username) {
@@ -241,6 +249,16 @@ class LiveNotifier extends Notifier<LiveState> {
 
       _handleGiftNative(nickname, giftName, repeatCount, diamondCount);
     });
+
+    final connectCallElapsedMs = _connectRequestedAt == null
+        ? null
+        : DateTime.now().difference(_connectRequestedAt!).inMilliseconds;
+    AppLogger.info(
+      connectCallElapsedMs == null
+          ? 'Calling TikTok client.connect for @$username'
+          : 'Calling TikTok client.connect for @$username '
+              '${connectCallElapsedMs}ms after request',
+    );
 
     unawaited(
       client.connect().catchError((error) {
@@ -367,10 +385,12 @@ class LiveNotifier extends Notifier<LiveState> {
     unawaited(effectSoundService.playComment());
 
     final settings = ref.read(ttsSettingsProvider);
-    _enqueueCommentTts(
-      comment,
-      voice: settings.commentVoice,
-    );
+    if (ttsService.hasSpeakableText(text)) {
+      _enqueueCommentTts(
+        comment,
+        voice: settings.commentVoice,
+      );
+    }
   }
 
   void _handleGiftNative(
@@ -429,6 +449,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
   Future<void> _playGiftVibration(int value) async {
     try {
+      AppLogger.info('Gift vibration triggered: value=$value');
       if (value >= _highGiftVibrationThreshold) {
         await HapticFeedback.heavyImpact();
       } else if (value >= _mediumGiftVibrationThreshold) {

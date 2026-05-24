@@ -169,6 +169,20 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         .replaceAll('/', '');
   }
 
+  String _voiceKey(Map<String, String>? voice) {
+    if (voice == null || voice.isEmpty) {
+      return '';
+    }
+    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
+        '${voice['identifier'] ?? ''}';
+  }
+
+  String _voiceLabel(Map<String, String> voice) {
+    final name = voice['name'] ?? voice['identifier'] ?? 'Voice';
+    final locale = voice['locale'];
+    return locale == null || locale.isEmpty ? name : '$name ($locale)';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLive = ref.watch(mainProvider.select((s) => s.isLive));
@@ -176,6 +190,18 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         ref.watch(mainProvider.select((s) => s.connectedUsername));
     final liveState = ref.watch(liveProvider);
     final ttsSettings = ref.watch(ttsSettingsProvider);
+
+    ref.listen<LiveState>(liveProvider, (previous, next) {
+      final becameConnected = previous?.wsStatus != WsStatus.connected &&
+          next.wsStatus == WsStatus.connected;
+      if (!becameConnected) {
+        return;
+      }
+      final connectedUsername = ref.read(mainProvider).connectedUsername;
+      unawaited(_saveUsernameIfNeeded(
+        connectedUsername ?? _usernameController.text,
+      ));
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFF050815),
@@ -313,12 +339,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                           .stopLive();
                                       return;
                                     }
-                                    await _saveUsernameIfNeeded(
-                                      _usernameController.text,
-                                    );
+                                    final username = _usernameController.text;
                                     await ref
                                         .read(liveProvider.notifier)
-                                        .startLive(_usernameController.text);
+                                        .startLive(username);
                                   },
                                 ),
                               ),
@@ -408,6 +432,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             final current = ref.watch(ttsSettingsProvider);
             final notifier = ref.read(ttsSettingsProvider.notifier);
             final giftSoundEnabled = notifier.giftSoundEnabled;
+            final availableVoices = current.availableVoices;
+            final availableVoiceKeys = availableVoices.map(_voiceKey).toSet();
+            final selectedCommentVoiceKey = _voiceKey(current.commentVoice);
+            final commentVoiceValue = selectedCommentVoiceKey.isNotEmpty &&
+                    availableVoiceKeys.contains(selectedCommentVoiceKey)
+                ? selectedCommentVoiceKey
+                : '';
 
             return SafeArea(
               child: Padding(
@@ -431,7 +462,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '音プリセット',
+                            '声・音プリセット',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.88),
                               fontWeight: FontWeight.w800,
@@ -473,6 +504,80 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                             );
                           }).toList(),
                         ),
+                        const SizedBox(height: 16),
+                        if (availableVoices.isNotEmpty)
+                          DropdownButtonFormField<String>(
+                            initialValue: commentVoiceValue,
+                            isExpanded: true,
+                            dropdownColor: const Color(0xFF151A2D),
+                            iconEnabledColor: const Color(0xFF72F6FF),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'コメント読み上げの声',
+                              helperText: '日本語の声を優先表示しています',
+                              labelStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.75),
+                              ),
+                              helperStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.58),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white.withValues(alpha: 0.05),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: BorderSide(
+                                  color: const Color(
+                                    0xFF72F6FF,
+                                  ).withValues(alpha: 0.22),
+                                ),
+                              ),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: '',
+                                child: Text('端末標準'),
+                              ),
+                              ...availableVoices.map((voice) {
+                                return DropdownMenuItem<String>(
+                                  value: _voiceKey(voice),
+                                  child: Text(
+                                    _voiceLabel(voice),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }),
+                            ],
+                            onChanged: (value) async {
+                              if (value == null) {
+                                return;
+                              }
+                              if (value.isEmpty) {
+                                await notifier.setCommentVoice(null);
+                                return;
+                              }
+                              final selectedVoice = availableVoices.firstWhere(
+                                (voice) => _voiceKey(voice) == value,
+                                orElse: () => const <String, String>{},
+                              );
+                              await notifier.setCommentVoice(
+                                selectedVoice.isEmpty ? null : selectedVoice,
+                              );
+                            },
+                          )
+                        else
+                          Text(
+                            '端末の音声一覧を取得できないため、標準の声を使用します',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.62),
+                              height: 1.35,
+                            ),
+                          ),
                         const SizedBox(height: 16),
                         _LabeledSlider(
                           label: '話速',
@@ -536,7 +641,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                           contentPadding: EdgeInsets.zero,
                           activeThumbColor: const Color(0xFF72F6FF),
                           title: const Text(
-                            'ギフト時のバイブレーション',
+                            'ギフト時にバイブレーション',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,

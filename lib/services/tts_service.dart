@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 import '../models/comment_model.dart';
 import '../models/tts_settings.dart';
@@ -133,11 +134,83 @@ class TtsService {
 
   Future<List<Map<String, String>>> getAvailableVoices() async {
     try {
-      return const [];
+      final rawVoices = await FlutterTts().getVoices;
+      if (rawVoices is! Iterable) {
+        return const [];
+      }
+
+      final voices = <Map<String, String>>[];
+      final seen = <String>{};
+      for (final rawVoice in rawVoices) {
+        final voice = _normalizeVoice(rawVoice);
+        if (voice.isEmpty) {
+          continue;
+        }
+
+        final key = _voiceKey(voice);
+        if (!seen.add(key)) {
+          continue;
+        }
+        voices.add(voice);
+      }
+
+      voices.sort(_compareVoices);
+      AppLogger.info('TTS voices loaded: ${voices.length}');
+      return voices;
     } catch (e) {
       AppLogger.error('getVoices error', error: e);
       return const [];
     }
+  }
+
+  Map<String, String> _normalizeVoice(Object? rawVoice) {
+    if (rawVoice is! Map) {
+      return const {};
+    }
+
+    final voice = <String, String>{};
+    for (final entry in rawVoice.entries) {
+      final key = entry.key?.toString();
+      final value = entry.value?.toString();
+      if (key == null || value == null || value.isEmpty) {
+        continue;
+      }
+      voice[key] = value;
+    }
+
+    final hasUsableIdentity = (voice['name']?.isNotEmpty ?? false) ||
+        (voice['identifier']?.isNotEmpty ?? false) ||
+        (voice['locale']?.isNotEmpty ?? false);
+    return hasUsableIdentity ? voice : const {};
+  }
+
+  int _compareVoices(Map<String, String> a, Map<String, String> b) {
+    final aJapanese = _isJapaneseVoice(a);
+    final bJapanese = _isJapaneseVoice(b);
+    if (aJapanese != bJapanese) {
+      return aJapanese ? -1 : 1;
+    }
+    return _voiceLabel(a).toLowerCase().compareTo(_voiceLabel(b).toLowerCase());
+  }
+
+  bool _isJapaneseVoice(Map<String, String> voice) {
+    final locale = voice['locale']?.toLowerCase() ?? '';
+    final name = voice['name']?.toLowerCase() ?? '';
+    return locale.startsWith('ja') ||
+        locale.contains('jp') ||
+        name.contains('japanese') ||
+        name.contains('日本');
+  }
+
+  String _voiceKey(Map<String, String> voice) {
+    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
+        '${voice['identifier'] ?? ''}';
+  }
+
+  String _voiceLabel(Map<String, String> voice) {
+    final name = voice['name'] ?? voice['identifier'] ?? 'Voice';
+    final locale = voice['locale'];
+    return locale == null || locale.isEmpty ? name : '$name ($locale)';
   }
 
   Future<List<String>> getAvailableLanguages() async {
@@ -151,6 +224,8 @@ class TtsService {
 
   int getPriority(CommentModel comment) => comment.priority;
 
+  bool hasSpeakableText(String text) => _sanitizeText(text).isNotEmpty;
+
   String _sanitizeText(String text) {
     if (text.isEmpty) return '';
 
@@ -158,15 +233,47 @@ class TtsService {
       RegExp(r'https?://[^\s]+'),
       'URL\u7701\u7565',
     );
-    cleaned = cleaned.replaceAll(RegExp(r'[wW]{3,}'), '\u7B11');
+    cleaned = cleaned.replaceAll(RegExp(r'[(（]\s*笑\s*[)）]'), '\u7B11');
+    cleaned = cleaned.replaceAll(RegExp(r'[wWｗＷ]{3,}'), '\u7B11');
+    cleaned = cleaned.replaceAll(RegExp(r'[\^＾]{2,}'), ' ');
+    cleaned = cleaned.replaceAll(
+      RegExp(r'[\(（][^一-龠ぁ-んァ-ヶa-zA-Z0-9０-９]{2,}[\)）]'),
+      ' ',
+    );
+    cleaned = _removeDecorativeRunes(cleaned);
+    cleaned = cleaned.replaceAll(
+      RegExp(r'[!！?？。｡、,，.．…・･~〜\-_=＝+＋*＊#＃]{2,}'),
+      ' ',
+    );
     cleaned = cleaned.replaceAllMapped(
-      RegExp(r'(.)\1{3,}'),
+      RegExp(r'(.)\1{3,}', unicode: true),
       (match) => match.group(1)! * 3,
     );
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (cleaned.length > 30) {
       cleaned = '${cleaned.substring(0, 30)} \u4EE5\u4E0B\u7701\u7565';
     }
     return cleaned.trim();
+  }
+
+  String _removeDecorativeRunes(String text) {
+    final buffer = StringBuffer();
+    for (final rune in text.runes) {
+      if (_isDecorativeRune(rune)) {
+        buffer.write(' ');
+        continue;
+      }
+      buffer.writeCharCode(rune);
+    }
+    return buffer.toString();
+  }
+
+  bool _isDecorativeRune(int rune) {
+    return (rune >= 0x1F000 && rune <= 0x1FAFF) ||
+        (rune >= 0x2600 && rune <= 0x27BF) ||
+        (rune >= 0xFE00 && rune <= 0xFE0F) ||
+        rune == 0x200D ||
+        rune == 0x20E3;
   }
 
   Future<void> speak(String text) async {
@@ -309,8 +416,8 @@ class TtsService {
     final now = DateTime.now();
     final delay =
         _nextInitAllowedAt == null || !_nextInitAllowedAt!.isAfter(now)
-        ? const Duration(seconds: 2)
-        : _nextInitAllowedAt!.difference(now);
+            ? const Duration(seconds: 2)
+            : _nextInitAllowedAt!.difference(now);
 
     _playbackRetryTimer = Timer(delay, () {
       _playbackRetryTimer = null;

@@ -96,6 +96,14 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
   Future<void> setGiftVibrationEnabled(bool value) async {
     await _persist(state.copyWith(giftVibrationEnabled: value));
   }
+
+  Future<void> setCommentVoice(Map<String, String>? voice) async {
+    await _persist(
+      voice == null
+          ? state.copyWith(clearCommentVoice: true)
+          : state.copyWith(commentVoice: voice),
+    );
+  }
 }
 
 final ttsSettingsProvider = NotifierProvider<TtsSettingsNotifier, TtsSettings>(
