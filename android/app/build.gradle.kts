@@ -1,3 +1,7 @@
+import java.io.FileInputStream
+import java.util.Properties
+import org.gradle.api.GradleException
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,8 +9,48 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystoreProperties = Properties()
+val rootKeyPropertiesFile = rootProject.file("key.properties")
+val appKeyPropertiesFile = project.file("key.properties")
+val keyPropertiesFile = when {
+    rootKeyPropertiesFile.exists() -> rootKeyPropertiesFile
+    appKeyPropertiesFile.exists() -> appKeyPropertiesFile
+    else -> null
+}
+if (keyPropertiesFile != null) {
+    keystoreProperties.load(FileInputStream(keyPropertiesFile))
+}
+val requiredSigningProperties = listOf(
+    "storeFile",
+    "storePassword",
+    "keyAlias",
+    "keyPassword",
+)
+fun signingProperty(name: String): String? =
+    keystoreProperties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+val hasCompleteReleaseSigning =
+    keyPropertiesFile != null && requiredSigningProperties.all { signingProperty(it) != null }
+if (keyPropertiesFile != null && !hasCompleteReleaseSigning) {
+    throw GradleException(
+        "Release signing file ${keyPropertiesFile.path} is missing one of: " +
+            requiredSigningProperties.joinToString(", ")
+    )
+}
+val releaseStoreFile = signingProperty("storeFile")?.let { rootProject.file(it) }
+val canSignRelease = hasCompleteReleaseSigning && releaseStoreFile?.exists() == true
+val requestedReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+if (requestedReleaseBuild && !canSignRelease) {
+    throw GradleException(
+        "Release build requires android/key.properties (or android/app/key.properties) " +
+            "and a valid keystore file. Example storeFile: app/upload-keystore.jks"
+    )
+}
+
 android {
-    namespace = "com.example.tikbox"
+    namespace = "com.taichi963.tikbox"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,8 +64,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.tikbox"
+        applicationId = "com.taichi963.tikbox"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -30,11 +73,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (canSignRelease) {
+            create("release") {
+                keyAlias = signingProperty("keyAlias")
+                keyPassword = signingProperty("keyPassword")
+                storeFile = releaseStoreFile
+                storePassword = signingProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (canSignRelease) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

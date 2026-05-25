@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/comment_model.dart';
 import 'neon_effect.dart';
@@ -57,7 +56,6 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
   }
 
   void _pushGift(CommentModel comment) {
-    HapticFeedback.mediumImpact();
     setState(() {
       _activeBursts.insert(0, comment);
       if (_activeBursts.length > 3) {

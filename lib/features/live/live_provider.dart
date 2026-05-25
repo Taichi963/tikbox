@@ -600,6 +600,7 @@ class LiveNotifier extends Notifier<LiveState> {
       if (_disposed || _manualStopRequested || _username == null) {
         return;
       }
+      AppLogger.info('Reconnect fired for @$_username');
       _connectNative(_username!);
     });
   }

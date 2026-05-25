@@ -73,8 +73,6 @@ class TtsService {
     }
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-
       _handler ??= await AudioService.init(
         builder: TikBoxAudioHandler.new,
         config: const AudioServiceConfig(
@@ -117,6 +115,16 @@ class TtsService {
     required bool active,
     String? username,
   }) async {
+    if (!active && !_initialized) {
+      if (_handler == null) {
+        return;
+      }
+      await _handler?.setConnectionActive(
+        active: false,
+      );
+      return;
+    }
+
     await init();
     if (!_initialized || _handler == null) {
       return;
@@ -355,10 +363,12 @@ class TtsService {
   Future<void> stopAll() async {
     _cancelPlaybackRetry();
     _playbackGeneration += 1;
-    await init();
-
     _queue.clear();
     _isPlaying = false;
+
+    if (_handler == null) {
+      return;
+    }
 
     await _handler?.stopCurrent();
   }
