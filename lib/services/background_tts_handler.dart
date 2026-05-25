@@ -10,6 +10,7 @@ import 'app_logger.dart';
 
 const String _keepAliveMimeType = 'audio/wav';
 const double _keepAliveVolume = 0.012;
+const Duration _diagnosticHeartbeatInterval = Duration(seconds: 30);
 final Uint8List _keepAliveWavBytes = _buildKeepAliveWav();
 
 class TtsQueueSnapshot {
@@ -52,6 +53,7 @@ class TikBoxAudioHandler extends BaseAudioHandler
   bool _keepAlivePrepared = false;
   bool _keepAliveRunning = false;
   bool _keepAliveRestartScheduled = false;
+  Timer? _diagnosticHeartbeatTimer;
   Future<void> _keepAliveSync = Future<void>.value();
 
   Future<void> ensureInitialized() async {
@@ -199,6 +201,9 @@ class TikBoxAudioHandler extends BaseAudioHandler
     _connectedUsername = active ? username : null;
     if (!active) {
       _speechRequestInFlight = false;
+      _stopDiagnosticHeartbeat();
+    } else {
+      _startDiagnosticHeartbeat();
     }
     await _queueKeepAliveSync();
     _publishState();
@@ -424,6 +429,30 @@ class TikBoxAudioHandler extends BaseAudioHandler
         }
       }),
     );
+  }
+
+  void _startDiagnosticHeartbeat() {
+    if (_diagnosticHeartbeatTimer?.isActive ?? false) {
+      return;
+    }
+    _diagnosticHeartbeatTimer =
+        Timer.periodic(_diagnosticHeartbeatInterval, (_) {
+      if (!_connectionActive) {
+        _stopDiagnosticHeartbeat();
+        return;
+      }
+      AppLogger.info(
+        'Background heartbeat: active=$_connectionActive '
+        'speaking=$_isSpeaking requestInFlight=$_speechRequestInFlight '
+        'keepAliveRunning=$_keepAliveRunning '
+        'player=${_keepAlivePlayer?.state.name ?? 'none'}',
+      );
+    });
+  }
+
+  void _stopDiagnosticHeartbeat() {
+    _diagnosticHeartbeatTimer?.cancel();
+    _diagnosticHeartbeatTimer = null;
   }
 }
 

@@ -53,12 +53,15 @@ class LiveNotifier extends Notifier<LiveState> {
   static const int _maxReconnectDelaySeconds = 16;
   static const int _mediumGiftVibrationThreshold = 10;
   static const int _highGiftVibrationThreshold = 100;
+  static const Duration _resumeReconnectRetryAfter = Duration(seconds: 30);
+  static const Duration _diagnosticHeartbeatInterval = Duration(seconds: 30);
 
   final Uuid _uuid = const Uuid();
 
   TikTokLiveClient? _client;
   String? _username;
   Timer? _reconnectTimer;
+  Timer? _diagnosticHeartbeatTimer;
   bool _disposed = false;
   bool _manualStopRequested = false;
   int _autoReconnectAttempts = 0;
@@ -103,6 +106,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     _connectRequestedAt = DateTime.now();
     AppLogger.info('Starting native TikTok connection for @$username');
+    _startDiagnosticHeartbeat();
     _connectNative(username);
     _primeEffectSoundAfterConnectStart();
   }
@@ -127,6 +131,7 @@ class LiveNotifier extends Notifier<LiveState> {
       clearError: true,
     );
     _connectRequestedAt = DateTime.now();
+    _startDiagnosticHeartbeat();
     _connectNative(_username!);
     _primeEffectSoundAfterConnectStart();
   }
@@ -154,6 +159,7 @@ class LiveNotifier extends Notifier<LiveState> {
         clearError: true,
       );
     }
+    _stopDiagnosticHeartbeat();
   }
 
   Future<void> skipCurrentTts() async {
@@ -167,11 +173,19 @@ class LiveNotifier extends Notifier<LiveState> {
 
     if (state.wsStatus == WsStatus.connecting &&
         !(_reconnectTimer?.isActive ?? false)) {
-      AppLogger.info(
-        'App resumed while reconnect was pending, retrying for @$_username',
-      );
-      _connectRequestedAt = DateTime.now();
-      _connectNative(_username!);
+      final shouldRetryConnect =
+          _client == null || _isConnectAttemptStaleOnResume();
+      if (shouldRetryConnect) {
+        AppLogger.info(
+          'App resumed while reconnect was pending, retrying for @$_username',
+        );
+        _connectRequestedAt = DateTime.now();
+        _connectNative(_username!);
+      } else {
+        AppLogger.info(
+          'App resumed while connection is already in progress for @$_username',
+        );
+      }
     }
 
     _primeEffectSoundAfterConnectStart();
@@ -181,6 +195,15 @@ class LiveNotifier extends Notifier<LiveState> {
         username: _username,
       ),
     );
+  }
+
+  bool _isConnectAttemptStaleOnResume() {
+    final requestedAt = _connectRequestedAt;
+    if (requestedAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(requestedAt) >=
+        _resumeReconnectRetryAfter;
   }
 
   void _primeEffectSoundAfterConnectStart() {
@@ -315,6 +338,7 @@ class LiveNotifier extends Notifier<LiveState> {
       reconnectAttempts: 0,
       clearError: true,
     );
+    _startDiagnosticHeartbeat();
     AppLogger.info(
       elapsedMs == null
           ? 'TikTok live natively connected for @$_username'
@@ -335,6 +359,7 @@ class LiveNotifier extends Notifier<LiveState> {
         reconnectAttempts: 0,
         clearError: true,
       );
+      _stopDiagnosticHeartbeat();
       return;
     }
 
@@ -555,6 +580,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _disposed = true;
     _manualStopRequested = true;
     _cancelReconnectTimer();
+    _stopDiagnosticHeartbeat();
     _connectRequestedAt = null;
     _resetGiftComboState();
     final previousClient = _client;
@@ -589,6 +615,8 @@ class LiveNotifier extends Notifier<LiveState> {
       errorMessage: '$reason。${delay.inSeconds}秒後に再接続します '
           '($nextAttempt/$_maxAutoReconnectAttempts)',
     );
+
+    _startDiagnosticHeartbeat();
 
     AppLogger.warning(
       'Scheduling reconnect attempt $nextAttempt in ${delay.inSeconds}s '
@@ -632,8 +660,41 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   void _cancelReconnectTimer() {
+    final hadActiveTimer = _reconnectTimer?.isActive ?? false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    if (hadActiveTimer) {
+      AppLogger.info('Reconnect cancelled');
+    }
+  }
+
+  void _startDiagnosticHeartbeat() {
+    if (_diagnosticHeartbeatTimer?.isActive ?? false) {
+      return;
+    }
+    _diagnosticHeartbeatTimer =
+        Timer.periodic(_diagnosticHeartbeatInterval, (_) {
+      if (_disposed || _manualStopRequested || _username == null) {
+        _stopDiagnosticHeartbeat();
+        return;
+      }
+      if (state.wsStatus != WsStatus.connected && !state.isConnecting) {
+        _stopDiagnosticHeartbeat();
+        return;
+      }
+      AppLogger.info(
+        'Live heartbeat: status=${state.wsStatus.name} '
+        'isConnecting=${state.isConnecting} client=${_client != null} '
+        'reconnectTimer=${_reconnectTimer?.isActive ?? false} '
+        'reconnectAttempts=$_autoReconnectAttempts '
+        'ttsQueue=${ttsService.queueLength}',
+      );
+    });
+  }
+
+  void _stopDiagnosticHeartbeat() {
+    _diagnosticHeartbeatTimer?.cancel();
+    _diagnosticHeartbeatTimer = null;
   }
 
   void _resetGiftComboState() {

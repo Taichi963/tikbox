@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,16 @@ Future<void> main() async {
           error: details.exception,
           stackTrace: details.stack,
         );
+      };
+      final previousPlatformErrorHandler =
+          ui.PlatformDispatcher.instance.onError;
+      ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+        AppLogger.error(
+          'PlatformDispatcher uncaught error',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return previousPlatformErrorHandler?.call(error, stackTrace) ?? true;
       };
 
       await SystemChrome.setPreferredOrientations([
@@ -105,6 +116,7 @@ class _WakelockWrapperState extends ConsumerState<_WakelockWrapper>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    AppLogger.info('app lifecycle changed: ${state.name}');
     if (state == AppLifecycleState.resumed) {
       unawaited(ref.read(liveProvider.notifier).onAppResumed());
     }
