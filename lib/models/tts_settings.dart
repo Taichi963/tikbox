@@ -27,6 +27,7 @@ class TtsSettings {
   final SoundPreset soundPreset;
   final bool keepScreenOn;
   final bool giftVibrationEnabled;
+  final bool readUsernameEnabled;
   final bool broadcastModeEnabled;
   final Map<String, String>? commentVoice;
   final Map<String, String>? giftVoice;
@@ -41,6 +42,7 @@ class TtsSettings {
     this.soundPreset = SoundPreset.balanced,
     this.keepScreenOn = true,
     this.giftVibrationEnabled = true,
+    this.readUsernameEnabled = true,
     this.broadcastModeEnabled = false,
     this.commentVoice,
     this.giftVoice,
@@ -56,6 +58,7 @@ class TtsSettings {
     SoundPreset? soundPreset,
     bool? keepScreenOn,
     bool? giftVibrationEnabled,
+    bool? readUsernameEnabled,
     bool? broadcastModeEnabled,
     Map<String, String>? commentVoice,
     Map<String, String>? giftVoice,
@@ -72,6 +75,7 @@ class TtsSettings {
       soundPreset: soundPreset ?? this.soundPreset,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
       giftVibrationEnabled: giftVibrationEnabled ?? this.giftVibrationEnabled,
+      readUsernameEnabled: readUsernameEnabled ?? this.readUsernameEnabled,
       broadcastModeEnabled: broadcastModeEnabled ?? this.broadcastModeEnabled,
       commentVoice:
           clearCommentVoice ? null : (commentVoice ?? this.commentVoice),
@@ -119,6 +123,7 @@ class TtsSettings {
       'soundPreset': soundPreset.storageKey,
       'keepScreenOn': keepScreenOn,
       'giftVibrationEnabled': giftVibrationEnabled,
+      'readUsernameEnabled': readUsernameEnabled,
       'broadcastModeEnabled': broadcastModeEnabled,
       'commentVoice': commentVoice,
       'giftVoice': giftVoice,
@@ -147,6 +152,7 @@ class TtsSettings {
       ),
       keepScreenOn: json['keepScreenOn'] as bool? ?? true,
       giftVibrationEnabled: json['giftVibrationEnabled'] as bool? ?? true,
+      readUsernameEnabled: json['readUsernameEnabled'] as bool? ?? true,
       broadcastModeEnabled: json['broadcastModeEnabled'] as bool? ?? false,
       commentVoice: parseVoice(json['commentVoice']),
       giftVoice: parseVoice(json['giftVoice']),

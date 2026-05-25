@@ -96,6 +96,7 @@ class EffectSoundService {
       }
 
       _initialized = true;
+      AppLogger.info('Effect sound initialized: tones=${_tones.length}');
     } catch (error, stackTrace) {
       _initialized = false;
       final poolsToDispose = _pools.values.toList(growable: false);
@@ -122,7 +123,13 @@ class EffectSoundService {
     required int value,
     required int comboStreak,
   }) async {
+    AppLogger.info(
+      'playGiftEvent called: enabled=$_giftSoundEnabled '
+      'volume=${_volume.toStringAsFixed(2)} value=$value '
+      'comboStreak=$comboStreak',
+    );
     if (!_giftSoundEnabled) {
+      AppLogger.info('playGiftEvent skipped: giftSoundEnabled=false');
       return;
     }
 
@@ -130,25 +137,31 @@ class EffectSoundService {
     final comboTier = _comboTier(comboStreak);
 
     if (value >= _highGiftValueThreshold) {
+      AppLogger.info('selected gift tone tier: high comboTier=$comboTier');
       await _playHighGiftCombo(randomVal, comboTier);
       return;
     }
 
     if (value >= _mediumGiftValueThreshold) {
+      AppLogger.info('selected gift tone tier: medium comboTier=$comboTier');
       await _playMediumGiftCombo(randomVal, comboTier);
       return;
     }
 
     if (comboTier > 0) {
+      AppLogger.info('selected gift tone tier: small comboTier=$comboTier');
       await _playSmallGiftCombo(randomVal, comboTier);
       return;
     }
 
     if (randomVal < 0.03) {
+      AppLogger.info('selected gift tone: rare_small');
       await _playTone('rare_small');
     } else {
       final variation = _random.nextInt(3);
-      await _playTone('small_$variation');
+      final toneName = 'small_$variation';
+      AppLogger.info('selected gift tone: $toneName');
+      await _playTone(toneName);
     }
   }
 
@@ -168,12 +181,14 @@ class EffectSoundService {
 
   void setVolume(double volume) {
     _volume = volume.clamp(0.0, 1.0);
+    AppLogger.info('Effect sound volume set: ${_volume.toStringAsFixed(2)}');
   }
 
   double get volume => _volume;
 
   void setGiftSoundEnabled(bool enabled) {
     _giftSoundEnabled = enabled;
+    AppLogger.info('Gift sound enabled set: $_giftSoundEnabled');
   }
 
   Duration get commentTtsLeadIn => const Duration(milliseconds: 110);
@@ -192,23 +207,46 @@ class EffectSoundService {
     String toneName, {
     double volumeScale = 1.0,
   }) async {
+    final isGiftTone = toneName != 'comment';
+    if (isGiftTone) {
+      AppLogger.info('_playTone called: $toneName');
+    }
+
     if (!_initialized) {
       await initialize();
     }
     if (!_initialized) {
+      if (isGiftTone) {
+        AppLogger.warning('_playTone skipped: not initialized');
+      }
       return;
     }
 
     final pool = _pools[toneName];
     final tone = _tones[toneName];
     if (pool == null || tone == null) {
+      if (isGiftTone) {
+        AppLogger.warning('_playTone skipped: missing tone $toneName');
+      }
       return;
     }
 
     try {
+      final resolvedVolume =
+          (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0);
+      if (resolvedVolume <= 0) {
+        if (isGiftTone) {
+          AppLogger.warning('_playTone skipped: volume is 0 for $toneName');
+        }
+        return;
+      }
+      if (isGiftTone) {
+        AppLogger.info(
+          '_playTone starting: $toneName volume=${resolvedVolume.toStringAsFixed(2)}',
+        );
+      }
       final stop = await pool.start(
-        volume:
-            (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0),
+        volume: resolvedVolume,
       );
       unawaited(
         Future<void>.delayed(tone.duration + _poolStopPadding, () async {

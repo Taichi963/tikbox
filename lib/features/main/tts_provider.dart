@@ -97,6 +97,10 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     await _persist(state.copyWith(giftVibrationEnabled: value));
   }
 
+  Future<void> setReadUsernameEnabled(bool value) async {
+    await _persist(state.copyWith(readUsernameEnabled: value));
+  }
+
   Future<void> setCommentVoice(Map<String, String>? voice) async {
     await _persist(
       voice == null

@@ -74,6 +74,7 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   Future<void> startLive(String rawUsername) async {
+    AppLogger.info('startLive called');
     final username = _normalizeUsername(rawUsername);
     if (username.isEmpty) {
       state = state.copyWith(
@@ -191,6 +192,16 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   void _connectNative(String username) {
+    final connectNativeElapsedMs = _connectRequestedAt == null
+        ? null
+        : DateTime.now().difference(_connectRequestedAt!).inMilliseconds;
+    AppLogger.info(
+      connectNativeElapsedMs == null
+          ? '_connectNative called for @$username'
+          : '_connectNative called for @$username '
+              '${connectNativeElapsedMs}ms after request',
+    );
+
     _cancelReconnectTimer();
     final previousClient = _client;
     _client = null;
@@ -260,14 +271,23 @@ class LiveNotifier extends Notifier<LiveState> {
               '${connectCallElapsedMs}ms after request',
     );
 
+    final clientConnectStartedAt = DateTime.now();
     unawaited(
-      client.connect().catchError((error) {
+      client.connect().then<void>((_) {
+        if (_disposed || !identical(_client, client)) {
+          return;
+        }
+        final elapsedMs =
+            DateTime.now().difference(clientConnectStartedAt).inMilliseconds;
+        AppLogger.info(
+          'TikTok client.connect completed for @$username in ${elapsedMs}ms',
+        );
+      }).catchError((error) {
         if (_disposed || _manualStopRequested || !identical(_client, client)) {
-          return '';
+          return;
         }
         AppLogger.error('TikTok connection failed totally', error: error);
         _handleStatusError('ライブが見つからないか、接続に失敗しました');
-        return '';
       }),
     );
   }
@@ -385,12 +405,29 @@ class LiveNotifier extends Notifier<LiveState> {
     unawaited(effectSoundService.playComment());
 
     final settings = ref.read(ttsSettingsProvider);
-    if (ttsService.hasSpeakableText(text)) {
+    final commentTtsText = _buildCommentTtsText(
+      comment,
+      readUsernameEnabled: settings.readUsernameEnabled,
+    );
+    if (commentTtsText != null) {
       _enqueueCommentTts(
         comment,
+        ttsText: commentTtsText,
         voice: settings.commentVoice,
       );
     }
+  }
+
+  String? _buildCommentTtsText(
+    CommentModel comment, {
+    required bool readUsernameEnabled,
+  }) {
+    if (!ttsService.hasSpeakableText(comment.text)) {
+      return null;
+    }
+
+    final ttsText = readUsernameEnabled ? comment.ttsText : comment.text;
+    return ttsService.hasSpeakableText(ttsText) ? ttsText : null;
   }
 
   void _handleGiftNative(
@@ -403,6 +440,10 @@ class LiveNotifier extends Notifier<LiveState> {
     if (diamondCount < 0) return;
 
     final totalValue = diamondCount * repeatCount;
+    AppLogger.info(
+      'Gift event received: user=$userName gift=$giftName '
+      'repeat=$repeatCount diamonds=$diamondCount total=$totalValue',
+    );
 
     final comment = CommentModel(
       id: _uuid.v4(),
@@ -468,6 +509,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
   void _enqueueCommentTts(
     CommentModel comment, {
+    required String ttsText,
     Map<String, String>? voice,
   }) {
     final sourceClient = _client;
@@ -479,7 +521,7 @@ class LiveNotifier extends Notifier<LiveState> {
           return;
         }
         await ttsService.enqueue(
-          comment.ttsText,
+          ttsText,
           priority: ttsService.getPriority(comment),
           voice: voice,
         );

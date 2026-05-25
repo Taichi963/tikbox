@@ -5,10 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/tts_settings.dart';
+import '../../services/app_logger.dart';
+import '../../services/tts_service.dart';
 import '../../widgets/comment_animation.dart';
 import '../../widgets/gift_animation.dart';
 import '../../widgets/neon_effect.dart';
-import '../../services/tts_service.dart';
 import '../live/live_provider.dart';
 import 'main_provider.dart';
 import 'tts_provider.dart';
@@ -177,10 +178,70 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         '${voice['identifier'] ?? ''}';
   }
 
-  String _voiceLabel(Map<String, String> voice) {
-    final name = voice['name'] ?? voice['identifier'] ?? 'Voice';
-    final locale = voice['locale'];
-    return locale == null || locale.isEmpty ? name : '$name ($locale)';
+  String _voiceLabel(Map<String, String> voice, int index) {
+    final name = (voice['name'] ?? '').trim();
+    final identifier = (voice['identifier'] ?? '').trim();
+    final locale = (voice['locale'] ?? '').trim();
+    final source = '$name $identifier $locale'.toLowerCase();
+    final language = _voiceLanguageLabel(locale, source);
+    final gender = _voiceGenderLabel(source);
+    final tone = _voiceToneLabel(source);
+
+    if (gender != null) {
+      return '$language・$gender（$tone） $index';
+    }
+    return '$language・$toneボイス $index';
+  }
+
+  String _voiceLanguageLabel(String locale, String source) {
+    final normalized = locale.toLowerCase();
+    if (normalized.startsWith('ja') ||
+        normalized.contains('jp') ||
+        source.contains('japanese') ||
+        source.contains('日本')) {
+      return '日本語';
+    }
+    if (normalized.startsWith('en')) {
+      return '英語';
+    }
+    if (normalized.startsWith('ko')) {
+      return '韓国語';
+    }
+    if (normalized.startsWith('zh')) {
+      return '中国語';
+    }
+    return '端末';
+  }
+
+  String? _voiceGenderLabel(String source) {
+    if (source.contains('female') ||
+        source.contains('woman') ||
+        source.contains('kyoko') ||
+        source.contains('haruka')) {
+      return '女性';
+    }
+    if (source.contains('male') ||
+        source.contains('man') ||
+        source.contains('otoya')) {
+      return '男性';
+    }
+    return null;
+  }
+
+  String _voiceToneLabel(String source) {
+    if (source.contains('premium') ||
+        source.contains('enhanced') ||
+        source.contains('neural') ||
+        source.contains('wavenet')) {
+      return '自然';
+    }
+    if (source.contains('bright') || source.contains('high')) {
+      return '明るめ';
+    }
+    if (source.contains('deep') || source.contains('low')) {
+      return '落ち着き';
+    }
+    return '標準';
   }
 
   @override
@@ -340,6 +401,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                       return;
                                     }
                                     final username = _usernameController.text;
+                                    AppLogger.info('Connect button pressed');
                                     await ref
                                         .read(liveProvider.notifier)
                                         .startLive(username);
@@ -450,6 +512,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            label: const Text('← 戻る'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         const NeonText(
                           '読み上げ設定',
                           glowColor: Color(0xFFEF6CFF),
@@ -516,8 +587,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                             decoration: InputDecoration(
-                              labelText: 'コメント読み上げの声',
-                              helperText: '日本語の声を優先表示しています',
+                              labelText: '読み上げボイス',
+                              helperText: '端末内の日本語音声を優先表示しています',
                               labelStyle: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.75),
                               ),
@@ -541,13 +612,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                             items: [
                               const DropdownMenuItem<String>(
                                 value: '',
-                                child: Text('端末標準'),
+                                child: Text('端末の標準ボイス'),
                               ),
-                              ...availableVoices.map((voice) {
+                              ...availableVoices.asMap().entries.map((entry) {
+                                final voice = entry.value;
                                 return DropdownMenuItem<String>(
                                   value: _voiceKey(voice),
                                   child: Text(
-                                    _voiceLabel(voice),
+                                    _voiceLabel(voice, entry.key + 1),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 );
@@ -605,6 +677,19 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                           max: 1.0,
                           divisions: 10,
                           onChanged: notifier.setTtsVolume,
+                        ),
+                        SwitchListTile.adaptive(
+                          value: current.readUsernameEnabled,
+                          onChanged: notifier.setReadUsernameEnabled,
+                          contentPadding: EdgeInsets.zero,
+                          activeThumbColor: const Color(0xFF72F6FF),
+                          title: const Text(
+                            'ユーザー名を読み上げる',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                         _LabeledSlider(
                           label: '効果音音量',
