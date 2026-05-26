@@ -1,5 +1,13 @@
 # Release Kit
 
+## Store Review Notes
+
+- TikBox is an unofficial tool and is not affiliated with, endorsed by, or sponsored by TikTok or ByteDance.
+- Background audio is used to keep comment text-to-speech and gift sound feedback available while the streamer is live.
+- Android foreground service and notification permissions are used to show that live reading is active in the background.
+- The app uses the TikTok ID entered by the user, LIVE comments, and gift events for reading, sound, vibration, local settings, and username history.
+- Do not describe TikBox as an official TikTok app or an official TikTok integration.
+
 ## App Name Ideas
 
 - LiveBurst

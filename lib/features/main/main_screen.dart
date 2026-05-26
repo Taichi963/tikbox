@@ -159,15 +159,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   String _normalizeUsername(String input) {
-    return input
-        .trim()
-        .replaceAll('@', '')
-        .replaceAll(
-          RegExp(r'https?://(www\.)?tiktok\.com/@?', caseSensitive: false),
-          '',
-        )
-        .replaceAll(RegExp(r'\?.*$'), '')
-        .replaceAll('/', '');
+    final trimmed = input.replaceAll('\u3000', ' ').trim();
+    final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
+    final withoutHost = withoutQuery.replaceFirst(
+      RegExp(r'^https?://(www\.)?tiktok\.com/', caseSensitive: false),
+      '',
+    );
+    final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
+    return withoutAt.split('/').first.replaceAll('@', '').trim();
   }
 
   String _voiceKey(Map<String, String>? voice) {

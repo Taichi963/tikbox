@@ -1,5 +1,12 @@
 # TikBox Phase 5 — リアルタイム接続実装
 
+## Current Release Notes
+
+- TikBox is an unofficial TikTok LIVE support tool and is not affiliated with, endorsed by, or sponsored by TikTok or ByteDance.
+- Current release builds connect by TikTok ID only. Cookie input and browser-cookie extraction are not used.
+- Background audio is used to keep comment text-to-speech and gift sound feedback available while streaming.
+- TikBox uses the entered TikTok ID, LIVE comments, and gift events for reading, sound, vibration, local settings, and username history.
+
 ## ファイル構成
 
 ```
@@ -125,5 +132,5 @@ ttsProvider.enqueueComment()  // TTS読み上げ
 ## 実機テスト時の注意
 
 - **Android実機**: PCと同じWi-Fiに接続し、PCのIPを指定
-- **iOS実機**: 同上。`Info.plist` に `NSAppTransportSecurity` の設定が必要な場合あり
+- **iOS実機**: 現行アプリはTikTokへのHTTPS/WSS接続を使います。ATS例外が必要になった場合のみ、理由を整理して追加してください。
 - **ファイアウォール**: PCのポート3000を開放してください

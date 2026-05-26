@@ -76,7 +76,7 @@ class TtsService {
       _handler ??= await AudioService.init(
         builder: TikBoxAudioHandler.new,
         config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.example.tikbox.tts',
+          androidNotificationChannelId: 'com.taichi963.tikbox.tts',
           androidNotificationChannelName: 'TikBox Live Reading',
           androidNotificationChannelDescription:
               'Keeps TikTok LIVE comment reading active in background',
