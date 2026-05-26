@@ -44,7 +44,19 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     }
 
     final voices = await ttsService.getAvailableVoices();
-    settings = settings.copyWith(availableVoices: voices);
+    final availableVoiceKeys = voices.map(_voiceKey).toSet();
+    settings = settings.copyWith(
+      availableVoices: voices,
+      clearCommentVoice: !_isAvailableVoice(
+        settings.commentVoice,
+        availableVoiceKeys,
+      ),
+      clearGiftVoice: !_isAvailableVoice(
+        settings.giftVoice,
+        availableVoiceKeys,
+      ),
+    );
+    await _prefs?.setString(_ttsSettingsKey, jsonEncode(settings.toJson()));
 
     state = settings;
     effectSoundService.setVolume(settings.effectVolume);
@@ -103,10 +115,27 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
 
   Future<void> setCommentVoice(Map<String, String>? voice) async {
     await _persist(
-      voice == null
+      voice == null ||
+              !_isAvailableVoice(
+                  voice, state.availableVoices.map(_voiceKey).toSet())
           ? state.copyWith(clearCommentVoice: true)
           : state.copyWith(commentVoice: voice),
     );
+  }
+
+  String _voiceKey(Map<String, String> voice) {
+    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
+        '${voice['identifier'] ?? ''}';
+  }
+
+  bool _isAvailableVoice(
+    Map<String, String>? voice,
+    Set<String> availableVoiceKeys,
+  ) {
+    if (voice == null || voice.isEmpty) {
+      return false;
+    }
+    return availableVoiceKeys.contains(_voiceKey(voice));
   }
 }
 

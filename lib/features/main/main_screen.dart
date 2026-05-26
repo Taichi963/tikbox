@@ -17,6 +17,7 @@ import 'tts_provider.dart';
 const String _lastUsernameKey = 'tikbox_last_username_v1';
 const String _savedUsernamesKey = 'tikbox_saved_usernames_v1';
 const int _maxSavedUsernames = 5;
+const String _voicePreviewText = 'こんにちは。TikBoxの読み上げテストです。';
 
 /// MVP: 接続・TTS・最小設定のコメント一覧のみ
 class MainScreen extends ConsumerStatefulWidget {
@@ -160,9 +161,31 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   String _normalizeUsername(String input) {
     final trimmed = input.replaceAll('\u3000', ' ').trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) {
+      if (uri.host.isEmpty) {
+        return '';
+      }
+      final host = uri.host.toLowerCase();
+      final isTikTokHost = host == 'tiktok.com' || host.endsWith('.tiktok.com');
+      if (!isTikTokHost) {
+        return '';
+      }
+      for (final segment in uri.pathSegments) {
+        if (segment.startsWith('@')) {
+          return segment.replaceFirst(RegExp(r'^@+'), '').trim();
+        }
+      }
+      return '';
+    }
+
     final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
     final withoutHost = withoutQuery.replaceFirst(
-      RegExp(r'^https?://(www\.)?tiktok\.com/', caseSensitive: false),
+      RegExp(r'^(https?://)?(www\.)?tiktok\.com/?', caseSensitive: false),
       '',
     );
     final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
@@ -482,6 +505,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   Future<void> _openSettings(BuildContext context) async {
+    Map<String, String>? pendingCommentVoice =
+        ref.read(ttsSettingsProvider).commentVoice;
+    var pendingCommentVoiceKey = _voiceKey(pendingCommentVoice);
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -495,285 +522,321 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             final giftSoundEnabled = notifier.giftSoundEnabled;
             final availableVoices = current.availableVoices;
             final availableVoiceKeys = availableVoices.map(_voiceKey).toSet();
-            final selectedCommentVoiceKey = _voiceKey(current.commentVoice);
-            final commentVoiceValue = selectedCommentVoiceKey.isNotEmpty &&
-                    availableVoiceKeys.contains(selectedCommentVoiceKey)
-                ? selectedCommentVoiceKey
+            final pendingVoiceValue = pendingCommentVoiceKey.isNotEmpty &&
+                    availableVoiceKeys.contains(pendingCommentVoiceKey)
+                ? pendingCommentVoiceKey
                 : '';
 
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: SingleChildScrollView(
-                  child: NeonPanel(
-                    glowColor: const Color(0xFFEF6CFF),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                            label: const Text('← 戻る'),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const NeonText(
-                          '読み上げ設定',
-                          glowColor: Color(0xFFEF6CFF),
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '声・音プリセット',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.88),
-                              fontWeight: FontWeight.w800,
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                return SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: SingleChildScrollView(
+                      child: NeonPanel(
+                        glowColor: const Color(0xFFEF6CFF),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.arrow_back_rounded),
+                                label: const Text('← 戻る'),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: SoundPreset.values.map((preset) {
-                            final selected = current.soundPreset == preset;
-                            return ChoiceChip(
-                              label: Text(
-                                preset.label,
+                            const SizedBox(height: 8),
+                            const NeonText(
+                              '読み上げ設定',
+                              glowColor: Color(0xFFEF6CFF),
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '声・音プリセット',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(
-                                    alpha: selected ? 0.96 : 0.78,
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: SoundPreset.values.map((preset) {
+                                final selected = current.soundPreset == preset;
+                                return ChoiceChip(
+                                  label: Text(
+                                    preset.label,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: selected ? 0.96 : 0.78,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
+                                  selected: selected,
+                                  showCheckmark: false,
+                                  selectedColor: const Color(
+                                    0xFF72F6FF,
+                                  ).withValues(alpha: 0.18),
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.05,
+                                  ),
+                                  side: BorderSide(
+                                    color: selected
+                                        ? const Color(0xFF72F6FF)
+                                        : Colors.white.withValues(alpha: 0.16),
+                                  ),
+                                  onSelected: (_) {
+                                    notifier.applySoundPreset(preset);
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 16),
+                            if (availableVoices.isNotEmpty) ...[
+                              DropdownButtonFormField<String>(
+                                initialValue: pendingVoiceValue,
+                                isExpanded: true,
+                                dropdownColor: const Color(0xFF151A2D),
+                                iconEnabledColor: const Color(0xFF72F6FF),
+                                style: const TextStyle(
+                                  color: Colors.white,
                                   fontWeight: FontWeight.w700,
                                 ),
+                                decoration: InputDecoration(
+                                  labelText: '読み上げボイス',
+                                  helperText: '端末内の日本語音声を優先表示しています',
+                                  labelStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                  ),
+                                  helperStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.58),
+                                  ),
+                                  filled: true,
+                                  fillColor:
+                                      Colors.white.withValues(alpha: 0.05),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                    borderSide: BorderSide(
+                                      color: const Color(
+                                        0xFF72F6FF,
+                                      ).withValues(alpha: 0.22),
+                                    ),
+                                  ),
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String>(
+                                    value: '',
+                                    child: Text('端末の標準ボイス'),
+                                  ),
+                                  ...availableVoices
+                                      .asMap()
+                                      .entries
+                                      .map((entry) {
+                                    final voice = entry.value;
+                                    return DropdownMenuItem<String>(
+                                      value: _voiceKey(voice),
+                                      child: Text(
+                                        _voiceLabel(voice, entry.key + 1),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }),
+                                ],
+                                onChanged: (value) async {
+                                  if (value == null) {
+                                    return;
+                                  }
+                                  if (value.isEmpty) {
+                                    setModalState(() {
+                                      pendingCommentVoice = null;
+                                      pendingCommentVoiceKey = '';
+                                    });
+                                    await ttsService.previewVoice(
+                                      _voicePreviewText,
+                                    );
+                                    return;
+                                  }
+                                  final selectedVoice =
+                                      availableVoices.firstWhere(
+                                    (voice) => _voiceKey(voice) == value,
+                                    orElse: () => const <String, String>{},
+                                  );
+                                  if (selectedVoice.isEmpty) {
+                                    return;
+                                  }
+                                  setModalState(() {
+                                    pendingCommentVoice = selectedVoice;
+                                    pendingCommentVoiceKey = value;
+                                  });
+                                  await ttsService.previewVoice(
+                                    _voicePreviewText,
+                                    voice: selectedVoice,
+                                  );
+                                },
                               ),
-                              selected: selected,
-                              showCheckmark: false,
-                              selectedColor: const Color(
-                                0xFF72F6FF,
-                              ).withValues(alpha: 0.18),
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.05,
+                              const SizedBox(height: 10),
+                              FilledButton.icon(
+                                onPressed: () async {
+                                  await notifier.setCommentVoice(
+                                    pendingCommentVoice,
+                                  );
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+                                icon: const Icon(Icons.check_rounded),
+                                label: const Text('この声にする'),
                               ),
-                              side: BorderSide(
-                                color: selected
-                                    ? const Color(0xFF72F6FF)
-                                    : Colors.white.withValues(alpha: 0.16),
+                            ] else
+                              Text(
+                                '端末の音声一覧を取得できないため、標準の声を使用します',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.62),
+                                  height: 1.35,
+                                ),
                               ),
-                              onSelected: (_) {
-                                notifier.applySoundPreset(preset);
-                              },
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 16),
-                        if (availableVoices.isNotEmpty)
-                          DropdownButtonFormField<String>(
-                            initialValue: commentVoiceValue,
-                            isExpanded: true,
-                            dropdownColor: const Color(0xFF151A2D),
-                            iconEnabledColor: const Color(0xFF72F6FF),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                            const SizedBox(height: 16),
+                            _LabeledSlider(
+                              label: '話速',
+                              valueText: current.rate.toStringAsFixed(2),
+                              value: current.rate,
+                              min: 0.3,
+                              max: 1.0,
+                              divisions: 14,
+                              onChanged: notifier.setRate,
                             ),
-                            decoration: InputDecoration(
-                              labelText: '読み上げボイス',
-                              helperText: '端末内の日本語音声を優先表示しています',
-                              labelStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                              helperStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.58),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.05),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide(
-                                  color: const Color(
-                                    0xFF72F6FF,
-                                  ).withValues(alpha: 0.22),
+                            _LabeledSlider(
+                              label: 'ピッチ',
+                              valueText: current.pitch.toStringAsFixed(2),
+                              value: current.pitch,
+                              min: 0.5,
+                              max: 2.0,
+                              divisions: 15,
+                              onChanged: notifier.setPitch,
+                            ),
+                            _LabeledSlider(
+                              label: '読み上げ音量',
+                              valueText: current.ttsVolume.toStringAsFixed(2),
+                              value: current.ttsVolume,
+                              min: 0.0,
+                              max: 1.0,
+                              divisions: 10,
+                              onChanged: notifier.setTtsVolume,
+                            ),
+                            SwitchListTile.adaptive(
+                              value: current.readUsernameEnabled,
+                              onChanged: notifier.setReadUsernameEnabled,
+                              contentPadding: EdgeInsets.zero,
+                              activeThumbColor: const Color(0xFF72F6FF),
+                              title: const Text(
+                                'ユーザー名を読み上げる',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: '',
-                                child: Text('端末の標準ボイス'),
+                            _LabeledSlider(
+                              label: '効果音音量',
+                              valueText:
+                                  current.effectVolume.toStringAsFixed(2),
+                              value: current.effectVolume,
+                              min: 0.0,
+                              max: 1.0,
+                              divisions: 10,
+                              onChanged: notifier.setEffectVolume,
+                            ),
+                            SwitchListTile.adaptive(
+                              value: giftSoundEnabled,
+                              onChanged: notifier.setGiftSoundEnabled,
+                              contentPadding: EdgeInsets.zero,
+                              activeThumbColor: const Color(0xFF72F6FF),
+                              title: const Text(
+                                'ギフト音',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
-                              ...availableVoices.asMap().entries.map((entry) {
-                                final voice = entry.value;
-                                return DropdownMenuItem<String>(
-                                  value: _voiceKey(voice),
-                                  child: Text(
-                                    _voiceLabel(voice, entry.key + 1),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                              subtitle: Text(
+                                'ギフト受信時の効果音だけを切り替えます',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                            SwitchListTile.adaptive(
+                              value: current.giftVibrationEnabled,
+                              onChanged: notifier.setGiftVibrationEnabled,
+                              contentPadding: EdgeInsets.zero,
+                              activeThumbColor: const Color(0xFF72F6FF),
+                              title: const Text(
+                                'ギフト時にバイブレーション',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'ギフト受信時だけ端末を短く振動させます',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                            SwitchListTile.adaptive(
+                              value: current.keepScreenOn,
+                              onChanged: notifier.setKeepScreenOn,
+                              contentPadding: EdgeInsets.zero,
+                              activeThumbColor: const Color(0xFF72F6FF),
+                              title: const Text(
+                                '配信中はスリープしない',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'ライブ接続中のみ画面を起こしたままにします',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: () async {
+                                await ttsService.speak(
+                                  'TikBox の読み上げテストです',
                                 );
-                              }),
-                            ],
-                            onChanged: (value) async {
-                              if (value == null) {
-                                return;
-                              }
-                              if (value.isEmpty) {
-                                await notifier.setCommentVoice(null);
-                                return;
-                              }
-                              final selectedVoice = availableVoices.firstWhere(
-                                (voice) => _voiceKey(voice) == value,
-                                orElse: () => const <String, String>{},
-                              );
-                              await notifier.setCommentVoice(
-                                selectedVoice.isEmpty ? null : selectedVoice,
-                              );
-                            },
-                          )
-                        else
-                          Text(
-                            '端末の音声一覧を取得できないため、標準の声を使用します',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.62),
-                              height: 1.35,
+                              },
+                              icon: const Icon(Icons.record_voice_over_rounded),
+                              label: const Text('読み上げテスト'),
                             ),
-                          ),
-                        const SizedBox(height: 16),
-                        _LabeledSlider(
-                          label: '話速',
-                          valueText: current.rate.toStringAsFixed(2),
-                          value: current.rate,
-                          min: 0.3,
-                          max: 1.0,
-                          divisions: 14,
-                          onChanged: notifier.setRate,
+                          ],
                         ),
-                        _LabeledSlider(
-                          label: 'ピッチ',
-                          valueText: current.pitch.toStringAsFixed(2),
-                          value: current.pitch,
-                          min: 0.5,
-                          max: 2.0,
-                          divisions: 15,
-                          onChanged: notifier.setPitch,
-                        ),
-                        _LabeledSlider(
-                          label: '読み上げ音量',
-                          valueText: current.ttsVolume.toStringAsFixed(2),
-                          value: current.ttsVolume,
-                          min: 0.0,
-                          max: 1.0,
-                          divisions: 10,
-                          onChanged: notifier.setTtsVolume,
-                        ),
-                        SwitchListTile.adaptive(
-                          value: current.readUsernameEnabled,
-                          onChanged: notifier.setReadUsernameEnabled,
-                          contentPadding: EdgeInsets.zero,
-                          activeThumbColor: const Color(0xFF72F6FF),
-                          title: const Text(
-                            'ユーザー名を読み上げる',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        _LabeledSlider(
-                          label: '効果音音量',
-                          valueText: current.effectVolume.toStringAsFixed(2),
-                          value: current.effectVolume,
-                          min: 0.0,
-                          max: 1.0,
-                          divisions: 10,
-                          onChanged: notifier.setEffectVolume,
-                        ),
-                        SwitchListTile.adaptive(
-                          value: giftSoundEnabled,
-                          onChanged: notifier.setGiftSoundEnabled,
-                          contentPadding: EdgeInsets.zero,
-                          activeThumbColor: const Color(0xFF72F6FF),
-                          title: const Text(
-                            'ギフト音',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'ギフト受信時の効果音だけを切り替えます',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        SwitchListTile.adaptive(
-                          value: current.giftVibrationEnabled,
-                          onChanged: notifier.setGiftVibrationEnabled,
-                          contentPadding: EdgeInsets.zero,
-                          activeThumbColor: const Color(0xFF72F6FF),
-                          title: const Text(
-                            'ギフト時にバイブレーション',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'ギフト受信時だけ端末を短く振動させます',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        SwitchListTile.adaptive(
-                          value: current.keepScreenOn,
-                          onChanged: notifier.setKeepScreenOn,
-                          contentPadding: EdgeInsets.zero,
-                          activeThumbColor: const Color(0xFF72F6FF),
-                          title: const Text(
-                            '配信中はスリープしない',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'ライブ接続中のみ画面を起こしたままにします',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.tonalIcon(
-                          onPressed: () async {
-                            await ttsService.speak(
-                              'TikBox の読み上げテストです',
-                            );
-                          },
-                          icon: const Icon(Icons.record_voice_over_rounded),
-                          label: const Text('読み上げテスト'),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         );

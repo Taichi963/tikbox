@@ -154,6 +154,9 @@ class TtsService {
         if (voice.isEmpty) {
           continue;
         }
+        if (!_isJapaneseVoice(voice)) {
+          continue;
+        }
 
         final key = _voiceKey(voice);
         if (!seen.add(key)) {
@@ -163,7 +166,7 @@ class TtsService {
       }
 
       voices.sort(_compareVoices);
-      AppLogger.info('TTS voices loaded: ${voices.length}');
+      AppLogger.info('Japanese TTS voices loaded: ${voices.length}');
       return voices;
     } catch (e) {
       AppLogger.error('getVoices error', error: e);
@@ -223,7 +226,7 @@ class TtsService {
 
   Future<List<String>> getAvailableLanguages() async {
     try {
-      return const ['ja-JP', 'en-US'];
+      return const [TtsSettings.japaneseLanguage];
     } catch (e) {
       AppLogger.error('getLanguages error', error: e);
       return const [];
@@ -286,6 +289,17 @@ class TtsService {
 
   Future<void> speak(String text) async {
     await enqueue(text, priority: 10);
+  }
+
+  Future<void> previewVoice(
+    String text, {
+    Map<String, String>? voice,
+  }) async {
+    await enqueueFirst(
+      text,
+      priority: 1000,
+      voice: voice,
+    );
   }
 
   Future<void> enqueue(
@@ -395,7 +409,7 @@ class TtsService {
     try {
       await _handler?.speakItem(
         text: item.text,
-        language: _settings.language,
+        language: TtsSettings.japaneseLanguage,
         rate: _settings.rate,
         pitch: _settings.pitch,
         volume: _settings.ttsVolume,

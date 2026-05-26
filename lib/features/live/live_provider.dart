@@ -202,8 +202,7 @@ class LiveNotifier extends Notifier<LiveState> {
     if (requestedAt == null) {
       return false;
     }
-    return DateTime.now().difference(requestedAt) >=
-        _resumeReconnectRetryAfter;
+    return DateTime.now().difference(requestedAt) >= _resumeReconnectRetryAfter;
   }
 
   void _primeEffectSoundAfterConnectStart() {
@@ -278,8 +277,8 @@ class LiveNotifier extends Notifier<LiveState> {
           '?';
       final giftMap = data['gift'] as Map<String, dynamic>? ?? {};
       final giftName = giftMap['name']?.toString() ?? 'ギフト';
-      final repeatCount = _toInt(data['repeatCount']);
-      final diamondCount = _toInt(giftMap['diamondCount']);
+      final repeatCount = _toPositiveInt(data['repeatCount']);
+      final diamondCount = _toPositiveInt(giftMap['diamondCount']);
 
       _handleGiftNative(nickname, giftName, repeatCount, diamondCount);
     });
@@ -458,16 +457,19 @@ class LiveNotifier extends Notifier<LiveState> {
   void _handleGiftNative(
     String userName,
     String giftName,
-    int repeatCount,
-    int diamondCount,
+    int? repeatCount,
+    int? diamondCount,
   ) {
     if (userName.isEmpty) return;
-    if (diamondCount < 0) return;
 
-    final totalValue = diamondCount * repeatCount;
+    final resolvedRepeatCount = repeatCount ?? 1;
+    final totalValue =
+        diamondCount == null ? null : diamondCount * resolvedRepeatCount;
     AppLogger.info(
       'Gift event received: user=$userName gift=$giftName '
-      'repeat=$repeatCount diamonds=$diamondCount total=$totalValue',
+      'repeat=${repeatCount ?? 'unknown'} '
+      'diamonds=${diamondCount ?? 'unknown'} '
+      'total=${totalValue ?? 'unknown'}',
     );
 
     final comment = CommentModel(
@@ -476,8 +478,8 @@ class LiveNotifier extends Notifier<LiveState> {
       text: '',
       type: CommentType.gift,
       giftName: giftName,
-      giftCount: repeatCount,
-      giftValue: totalValue,
+      giftCount: resolvedRepeatCount,
+      giftValue: totalValue ?? 0,
       createdAt: DateTime.now(),
     );
 
@@ -492,7 +494,7 @@ class LiveNotifier extends Notifier<LiveState> {
     }
     _lastGiftTime = now;
 
-    final soundValue = totalValue <= 0 ? 1 : totalValue;
+    final soundValue = totalValue ?? 0;
 
     unawaited(
       effectSoundService.playGiftEvent(
@@ -502,8 +504,13 @@ class LiveNotifier extends Notifier<LiveState> {
     );
 
     final settings = ref.read(ttsSettingsProvider);
+    AppLogger.info(
+      'Gift vibration setting: ${settings.giftVibrationEnabled}',
+    );
     if (settings.giftVibrationEnabled) {
-      unawaited(_playGiftVibration(soundValue));
+      unawaited(_playGiftVibration(totalValue ?? 1));
+    } else {
+      AppLogger.info('Gift vibration skipped because setting is OFF');
     }
     final preferredGiftVoice = settings.giftVoice ?? settings.commentVoice;
     _enqueueGiftTts(
@@ -515,7 +522,12 @@ class LiveNotifier extends Notifier<LiveState> {
 
   Future<void> _playGiftVibration(int value) async {
     try {
-      AppLogger.info('Gift vibration triggered: value=$value');
+      final feedback = value >= _highGiftVibrationThreshold
+          ? 'heavy'
+          : value >= _mediumGiftVibrationThreshold
+              ? 'medium'
+              : 'light';
+      AppLogger.info('Gift vibration triggered: $feedback value=$value');
       if (value >= _highGiftVibrationThreshold) {
         await HapticFeedback.heavyImpact();
       } else if (value >= _mediumGiftVibrationThreshold) {
@@ -523,6 +535,7 @@ class LiveNotifier extends Notifier<LiveState> {
       } else {
         await HapticFeedback.lightImpact();
       }
+      AppLogger.info('Gift vibration completed: $feedback value=$value');
     } catch (error, stackTrace) {
       AppLogger.warning(
         'Gift vibration failed',
@@ -704,9 +717,31 @@ class LiveNotifier extends Notifier<LiveState> {
 
   String _normalizeUsername(String input) {
     final trimmed = input.replaceAll('\u3000', ' ').trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) {
+      if (uri.host.isEmpty) {
+        return '';
+      }
+      final host = uri.host.toLowerCase();
+      final isTikTokHost = host == 'tiktok.com' || host.endsWith('.tiktok.com');
+      if (!isTikTokHost) {
+        return '';
+      }
+      for (final segment in uri.pathSegments) {
+        if (segment.startsWith('@')) {
+          return segment.replaceFirst(RegExp(r'^@+'), '').trim();
+        }
+      }
+      return '';
+    }
+
     final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
     final withoutHost = withoutQuery.replaceFirst(
-      RegExp(r'^https?://(www\.)?tiktok\.com/', caseSensitive: false),
+      RegExp(r'^(https?://)?(www\.)?tiktok\.com/?', caseSensitive: false),
       '',
     );
     final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
@@ -721,6 +756,18 @@ class LiveNotifier extends Notifier<LiveState> {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '') ?? 1;
+  }
+
+  int? _toPositiveInt(Object? value) {
+    final parsed = value is int
+        ? value
+        : value is num
+            ? value.toInt()
+            : int.tryParse(value?.toString() ?? '');
+    if (parsed == null || parsed <= 0) {
+      return null;
+    }
+    return parsed;
   }
 }
 

@@ -17,6 +17,9 @@ class EffectSoundService {
   static const Duration _poolStopPadding = Duration(milliseconds: 24);
   static const int _mediumGiftValueThreshold = 10;
   static const int _highGiftValueThreshold = 100;
+  static const int _mediumGiftSoundThreshold = 100;
+  static const int _largeGiftSoundThreshold = 1000;
+  static const int _ultraRareGiftSoundThreshold = 10000;
 
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
@@ -135,21 +138,46 @@ class EffectSoundService {
 
     final randomVal = _random.nextDouble();
     final comboTier = _comboTier(comboStreak);
+    final giftTier = _giftSoundTier(value);
 
-    if (value >= _highGiftValueThreshold) {
-      AppLogger.info('selected gift tone tier: high comboTier=$comboTier');
+    if (giftTier == _GiftSoundTier.ultraRare) {
+      AppLogger.info('selected gift tone tier: ultraRare comboTier=$comboTier');
+      await _playUltraRareGift(randomVal, comboTier);
+      return;
+    }
+
+    if (giftTier == _GiftSoundTier.large) {
+      AppLogger.info('selected gift tone tier: large comboTier=$comboTier');
       await _playHighGiftCombo(randomVal, comboTier);
       return;
     }
 
-    if (value >= _mediumGiftValueThreshold) {
+    if (giftTier == _GiftSoundTier.medium) {
       AppLogger.info('selected gift tone tier: medium comboTier=$comboTier');
       await _playMediumGiftCombo(randomVal, comboTier);
       return;
     }
 
+    if (giftTier == _GiftSoundTier.fallback) {
+      AppLogger.info('selected gift tone tier: fallback');
+      await _playSmallGift(randomVal, 0);
+      return;
+    }
+
+    AppLogger.info('selected gift tone tier: small comboTier=$comboTier');
+    await _playSmallGift(randomVal, comboTier);
+  }
+
+  _GiftSoundTier _giftSoundTier(int value) {
+    if (value <= 0) return _GiftSoundTier.fallback;
+    if (value < _mediumGiftSoundThreshold) return _GiftSoundTier.small;
+    if (value < _largeGiftSoundThreshold) return _GiftSoundTier.medium;
+    if (value < _ultraRareGiftSoundThreshold) return _GiftSoundTier.large;
+    return _GiftSoundTier.ultraRare;
+  }
+
+  Future<void> _playSmallGift(double randomVal, int comboTier) async {
     if (comboTier > 0) {
-      AppLogger.info('selected gift tone tier: small comboTier=$comboTier');
       await _playSmallGiftCombo(randomVal, comboTier);
       return;
     }
@@ -450,6 +478,22 @@ class EffectSoundService {
         const Duration(milliseconds: 112),
         'medium_combo_3_4',
         volumeScale: 0.68,
+      );
+    }
+  }
+
+  Future<void> _playUltraRareGift(double randomVal, int comboTier) async {
+    await _playTone('rare_large');
+    _playToneAfter(
+      const Duration(milliseconds: 92),
+      comboTier >= 2 ? 'large_combo_10' : 'large',
+      volumeScale: 0.78,
+    );
+    if (randomVal < 0.08) {
+      _playToneAfter(
+        const Duration(milliseconds: 170),
+        'medium_combo_10',
+        volumeScale: 0.58,
       );
     }
   }
@@ -936,3 +980,11 @@ class _ToneNote {
 }
 
 final effectSoundService = EffectSoundService.instance;
+
+enum _GiftSoundTier {
+  fallback,
+  small,
+  medium,
+  large,
+  ultraRare,
+}

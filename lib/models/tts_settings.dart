@@ -19,6 +19,8 @@ enum SoundPreset {
 }
 
 class TtsSettings {
+  static const String japaneseLanguage = 'ja-JP';
+
   final double rate;
   final double pitch;
   final double ttsVolume;
@@ -38,7 +40,7 @@ class TtsSettings {
     this.pitch = 1.0,
     this.ttsVolume = 1.0,
     this.effectVolume = 0.85,
-    this.language = 'ja-JP',
+    this.language = japaneseLanguage,
     this.soundPreset = SoundPreset.balanced,
     this.keepScreenOn = true,
     this.giftVibrationEnabled = true,
@@ -71,7 +73,7 @@ class TtsSettings {
       pitch: pitch ?? this.pitch,
       ttsVolume: ttsVolume ?? this.ttsVolume,
       effectVolume: effectVolume ?? this.effectVolume,
-      language: language ?? this.language,
+      language: japaneseLanguage,
       soundPreset: soundPreset ?? this.soundPreset,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
       giftVibrationEnabled: giftVibrationEnabled ?? this.giftVibrationEnabled,
@@ -119,7 +121,7 @@ class TtsSettings {
       'pitch': pitch,
       'ttsVolume': ttsVolume,
       'effectVolume': effectVolume,
-      'language': language,
+      'language': japaneseLanguage,
       'soundPreset': soundPreset.storageKey,
       'keepScreenOn': keepScreenOn,
       'giftVibrationEnabled': giftVibrationEnabled,
@@ -146,7 +148,7 @@ class TtsSettings {
       pitch: (json['pitch'] as num?)?.toDouble() ?? 1.0,
       ttsVolume: (json['ttsVolume'] as num?)?.toDouble() ?? 1.0,
       effectVolume: (json['effectVolume'] as num?)?.toDouble() ?? 0.85,
-      language: json['language']?.toString() ?? 'ja-JP',
+      language: japaneseLanguage,
       soundPreset: SoundPreset.fromStorageKey(
         json['soundPreset']?.toString(),
       ),
