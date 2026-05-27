@@ -55,6 +55,7 @@ class LiveNotifier extends Notifier<LiveState> {
   static const int _highGiftVibrationThreshold = 100;
   static const Duration _resumeReconnectRetryAfter = Duration(seconds: 30);
   static const Duration _diagnosticHeartbeatInterval = Duration(seconds: 30);
+  static const Duration _connectSlowLogThreshold = Duration(seconds: 20);
 
   final Uuid _uuid = const Uuid();
 
@@ -62,6 +63,7 @@ class LiveNotifier extends Notifier<LiveState> {
   String? _username;
   Timer? _reconnectTimer;
   Timer? _diagnosticHeartbeatTimer;
+  Timer? _connectSlowLogTimer;
   bool _disposed = false;
   bool _manualStopRequested = false;
   int _autoReconnectAttempts = 0;
@@ -139,6 +141,7 @@ class LiveNotifier extends Notifier<LiveState> {
   Future<void> stopLive() async {
     _manualStopRequested = true;
     _cancelReconnectTimer();
+    _cancelConnectSlowLogTimer();
     _autoReconnectAttempts = 0;
     _resetGiftComboState();
     _username = null;
@@ -160,6 +163,7 @@ class LiveNotifier extends Notifier<LiveState> {
       );
     }
     _stopDiagnosticHeartbeat();
+    _cancelConnectSlowLogTimer();
   }
 
   Future<void> skipCurrentTts() async {
@@ -225,6 +229,7 @@ class LiveNotifier extends Notifier<LiveState> {
     );
 
     _cancelReconnectTimer();
+    _cancelConnectSlowLogTimer();
     final previousClient = _client;
     _client = null;
     previousClient?.disconnect();
@@ -232,25 +237,46 @@ class LiveNotifier extends Notifier<LiveState> {
 
     final client = TikTokLiveClient(username);
     _client = client;
+    DateTime? clientConnectStartedAt;
 
     client.on(EventType.connected, (evt) {
       if (_disposed || !identical(_client, client)) return;
+      _cancelConnectSlowLogTimer();
+      final elapsedMs = clientConnectStartedAt == null
+          ? null
+          : DateTime.now().difference(clientConnectStartedAt).inMilliseconds;
+      AppLogger.info(
+        elapsedMs == null
+            ? 'TikTok connected event received for @$username'
+            : 'TikTok connected event received for @$username '
+                '${elapsedMs}ms after client.connect',
+      );
       _handleStatusConnected();
     });
 
     client.on(EventType.disconnected, (evt) {
       if (_disposed || !identical(_client, client)) return;
+      _cancelConnectSlowLogTimer();
+      AppLogger.warning(
+        'TikTok disconnected event received for @$username data=${evt.data}',
+      );
       _handleStatusDisconnected();
     });
 
     client.on(EventType.reconnecting, (evt) {
       if (_disposed || !identical(_client, client)) return;
       final attempt = _toInt(evt.data?['attempt']);
+      AppLogger.info(
+        'TikTok reconnecting event received for @$username attempt=$attempt',
+      );
       _handleStatusReconnecting(attempt);
     });
 
     client.on('error', (evt) {
       if (_disposed || !identical(_client, client)) return;
+      _cancelConnectSlowLogTimer();
+      AppLogger.error(
+          'TikTok client error event for @$username data=${evt.data}');
       _handleStatusError(evt.data?['error']?.toString() ?? '不明なエラーが発生しました');
     });
 
@@ -293,22 +319,28 @@ class LiveNotifier extends Notifier<LiveState> {
               '${connectCallElapsedMs}ms after request',
     );
 
-    final clientConnectStartedAt = DateTime.now();
+    clientConnectStartedAt = DateTime.now();
+    _scheduleConnectSlowLog(username, client);
     unawaited(
       client.connect().then<void>((_) {
         if (_disposed || !identical(_client, client)) {
           return;
         }
         final elapsedMs =
-            DateTime.now().difference(clientConnectStartedAt).inMilliseconds;
+            DateTime.now().difference(clientConnectStartedAt!).inMilliseconds;
         AppLogger.info(
           'TikTok client.connect completed for @$username in ${elapsedMs}ms',
         );
-      }).catchError((error) {
+      }).catchError((Object error, StackTrace stackTrace) {
         if (_disposed || _manualStopRequested || !identical(_client, client)) {
           return;
         }
-        AppLogger.error('TikTok connection failed totally', error: error);
+        _cancelConnectSlowLogTimer();
+        AppLogger.error(
+          'TikTok connection failed totally',
+          error: error,
+          stackTrace: stackTrace,
+        );
         _handleStatusError('ライブが見つからないか、接続に失敗しました');
       }),
     );
@@ -593,6 +625,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _disposed = true;
     _manualStopRequested = true;
     _cancelReconnectTimer();
+    _cancelConnectSlowLogTimer();
     _stopDiagnosticHeartbeat();
     _connectRequestedAt = null;
     _resetGiftComboState();
@@ -679,6 +712,26 @@ class LiveNotifier extends Notifier<LiveState> {
     if (hadActiveTimer) {
       AppLogger.info('Reconnect cancelled');
     }
+  }
+
+  void _scheduleConnectSlowLog(String username, TikTokLiveClient client) {
+    _cancelConnectSlowLogTimer();
+    _connectSlowLogTimer = Timer(_connectSlowLogThreshold, () {
+      _connectSlowLogTimer = null;
+      if (_disposed || _manualStopRequested || !identical(_client, client)) {
+        return;
+      }
+      AppLogger.warning(
+        'TikTok client.connect still waiting after '
+        '${_connectSlowLogThreshold.inSeconds}s for @$username '
+        'status=${state.wsStatus.name} isConnecting=${state.isConnecting}',
+      );
+    });
+  }
+
+  void _cancelConnectSlowLogTimer() {
+    _connectSlowLogTimer?.cancel();
+    _connectSlowLogTimer = null;
   }
 
   void _startDiagnosticHeartbeat() {

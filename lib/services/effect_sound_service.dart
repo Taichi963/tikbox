@@ -17,9 +17,9 @@ class EffectSoundService {
   static const Duration _poolStopPadding = Duration(milliseconds: 24);
   static const int _mediumGiftValueThreshold = 10;
   static const int _highGiftValueThreshold = 100;
-  static const int _mediumGiftSoundThreshold = 100;
-  static const int _largeGiftSoundThreshold = 1000;
-  static const int _ultraRareGiftSoundThreshold = 10000;
+  static const int _mediumGiftSoundThreshold = 10;
+  static const int _largeGiftSoundThreshold = 100;
+  static const int _ultraRareGiftSoundThreshold = 1000;
 
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
