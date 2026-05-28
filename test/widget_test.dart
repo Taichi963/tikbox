@@ -14,11 +14,11 @@ void main() {
   testWidgets('app renders main screen', (WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: TikBoxApp(),
+        child: LiveVoiceBoxApp(),
       ),
     );
 
-    expect(find.text('LIVE 接続待機中'), findsOneWidget);
-    expect(find.text('TikTok username'), findsOneWidget);
+    expect(find.text('ライブ接続待機中'), findsOneWidget);
+    expect(find.text('配信ID（@から始まるID）'), findsOneWidget);
   });
 }

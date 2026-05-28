@@ -17,7 +17,7 @@ import 'tts_provider.dart';
 const String _lastUsernameKey = 'tikbox_last_username_v1';
 const String _savedUsernamesKey = 'tikbox_saved_usernames_v1';
 const int _maxSavedUsernames = 5;
-const String _voicePreviewText = 'こんにちは。TikBoxの読み上げテストです。';
+const String _voicePreviewText = 'こんにちは。LiveVoice Boxの読み上げテストです。';
 
 /// MVP: 接続・TTS・最小設定のコメント一覧のみ
 class MainScreen extends ConsumerStatefulWidget {
@@ -349,9 +349,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                             decoration: InputDecoration(
-                              labelText: 'TikTok ID (@から始まるID)',
+                              labelText: '配信ID（@から始まるID）',
                               hintText: '例: @jppachi',
-                              helperText: '表示名ではなく @ID を入力',
+                              helperText: '表示名ではなく、配信ページの @ID を入力',
                               labelStyle: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.75),
                               ),
@@ -373,6 +373,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                       .withValues(alpha: 0.22),
                                 ),
                               ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '非公式ツールです。ログイン情報・Cookieは取得しません。接続できない場合があります。',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.62),
+                              fontSize: 12,
+                              height: 1.35,
                             ),
                           ),
                           if (_savedUsernames.isNotEmpty) ...[
@@ -821,10 +830,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: () => _showPrivacyPolicy(context),
+                              icon: const Icon(Icons.privacy_tip_outlined),
+                              label: const Text('プライバシーと非公式について'),
+                            ),
+                            const SizedBox(height: 12),
                             FilledButton.tonalIcon(
                               onPressed: () async {
                                 await ttsService.speak(
-                                  'TikBox の読み上げテストです',
+                                  'LiveVoice Box の読み上げテストです',
                                 );
                               },
                               icon: const Icon(Icons.record_voice_over_rounded),
@@ -839,6 +854,31 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               },
             );
           },
+        );
+      },
+    );
+  }
+
+  Future<void> _showPrivacyPolicy(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('プライバシーと非公式について'),
+          content: const SingleChildScrollView(
+            child: Text(
+              'LiveVoice BoxはTikTok/ByteDanceの公式アプリではありません。\n\n'
+              'TikTokのログイン情報、パスワード、Cookie、ブラウザCookieは取得しません。\n\n'
+              '入力された配信IDは、公開LIVEへの接続にのみ使います。コメントとギフト情報は、読み上げ、効果音、バイブレーションのためにアプリ内で処理します。\n\n'
+              '設定とID履歴は端末内に保存されます。配信サービス側の仕様変更、通信状態、OSのバックグラウンド制限により接続できない場合があります。',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('閉じる'),
+            ),
+          ],
         );
       },
     );

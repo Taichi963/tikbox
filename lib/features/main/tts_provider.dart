@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/tts_settings.dart';
+import '../../services/app_logger.dart';
 import '../../services/effect_sound_service.dart';
 import '../../services/tts_service.dart';
 
@@ -38,7 +39,12 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
         settings = TtsSettings.fromJson(
           jsonDecode(raw) as Map<String, dynamic>,
         );
-      } catch (_) {
+      } catch (error, stackTrace) {
+        AppLogger.warning(
+          'Failed to restore TTS settings; using defaults',
+          error: error,
+          stackTrace: stackTrace,
+        );
         settings = const TtsSettings();
       }
     }

@@ -25,7 +25,7 @@ import AVFoundation
         object: session
       )
     } catch {
-      NSLog("TikBox audio session setup failed: \(error.localizedDescription)")
+      NSLog("LiveVoice Box audio session setup failed: \(error.localizedDescription)")
     }
 
     GeneratedPluginRegistrant.register(with: self)
@@ -38,7 +38,7 @@ import AVFoundation
     let typeText = typeValue.map { String($0) } ?? "unknown"
     let optionText = optionValue.map { String($0) } ?? "none"
     NSLog(
-      "TikBox audio session interruption: type=\(typeText) options=\(optionText)"
+      "LiveVoice Box audio session interruption: type=\(typeText) options=\(optionText)"
     )
   }
 
@@ -46,7 +46,7 @@ import AVFoundation
     let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
     let reasonText = reasonValue.map { String($0) } ?? "unknown"
     NSLog(
-      "TikBox audio session route change: reason=\(reasonText)"
+      "LiveVoice Box audio session route change: reason=\(reasonText)"
     )
   }
 }

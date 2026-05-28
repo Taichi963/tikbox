@@ -39,6 +39,10 @@ class EffectSoundService {
   @visibleForTesting
   static Uint8List debugBuildGiftWav() => _buildSmallCrystal().bytes;
 
+  @visibleForTesting
+  static String debugGiftSoundTierName(int value) =>
+      _giftSoundTierForValue(value).name;
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -108,7 +112,13 @@ class EffectSoundService {
       for (final pool in poolsToDispose) {
         try {
           await pool.dispose();
-        } catch (_) {}
+        } catch (disposeError, disposeStackTrace) {
+          AppLogger.warning(
+            'Effect sound pool dispose failed after initialization error',
+            error: disposeError,
+            stackTrace: disposeStackTrace,
+          );
+        }
       }
       AppLogger.error(
         'Effect sound initialization failed',
@@ -169,6 +179,10 @@ class EffectSoundService {
   }
 
   _GiftSoundTier _giftSoundTier(int value) {
+    return _giftSoundTierForValue(value);
+  }
+
+  static _GiftSoundTier _giftSoundTierForValue(int value) {
     if (value <= 0) return _GiftSoundTier.fallback;
     if (value < _mediumGiftSoundThreshold) return _GiftSoundTier.small;
     if (value < _largeGiftSoundThreshold) return _GiftSoundTier.medium;

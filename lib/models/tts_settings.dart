@@ -133,6 +133,16 @@ class TtsSettings {
   }
 
   factory TtsSettings.fromJson(Map<String, dynamic> json) {
+    double clampedDouble(
+      String key,
+      double fallback,
+      double min,
+      double max,
+    ) {
+      final value = (json[key] as num?)?.toDouble() ?? fallback;
+      return value.clamp(min, max).toDouble();
+    }
+
     Map<String, String>? parseVoice(Object? value) {
       if (value is Map) {
         final map = value.map(
@@ -144,10 +154,10 @@ class TtsSettings {
     }
 
     return TtsSettings(
-      rate: (json['rate'] as num?)?.toDouble() ?? 0.5,
-      pitch: (json['pitch'] as num?)?.toDouble() ?? 1.0,
-      ttsVolume: (json['ttsVolume'] as num?)?.toDouble() ?? 1.0,
-      effectVolume: (json['effectVolume'] as num?)?.toDouble() ?? 0.85,
+      rate: clampedDouble('rate', 0.5, 0.3, 1.0),
+      pitch: clampedDouble('pitch', 1.0, 0.5, 2.0),
+      ttsVolume: clampedDouble('ttsVolume', 1.0, 0.0, 1.0),
+      effectVolume: clampedDouble('effectVolume', 0.85, 0.0, 1.0),
       language: japaneseLanguage,
       soundPreset: SoundPreset.fromStorageKey(
         json['soundPreset']?.toString(),

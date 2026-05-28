@@ -4,7 +4,7 @@ class AppLogger {
   static void info(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
       message,
-      name: 'TikBox',
+      name: 'LiveVoiceBox',
       error: error,
       stackTrace: stackTrace,
       level: 800,
@@ -14,7 +14,7 @@ class AppLogger {
   static void warning(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
       message,
-      name: 'TikBox',
+      name: 'LiveVoiceBox',
       error: error,
       stackTrace: stackTrace,
       level: 900,
@@ -24,7 +24,7 @@ class AppLogger {
   static void error(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
       message,
-      name: 'TikBox',
+      name: 'LiveVoiceBox',
       error: error,
       stackTrace: stackTrace,
       level: 1000,

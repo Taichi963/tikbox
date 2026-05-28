@@ -1,92 +1,85 @@
-# Release Kit
+# Store Release Kit - LiveVoice Box
 
 ## Store Review Notes
 
-- TikBox is an unofficial tool and is not affiliated with, endorsed by, or sponsored by TikTok or ByteDance.
-- Background audio is used to keep comment text-to-speech and gift sound feedback available while the streamer is live.
-- Android foreground service and notification permissions are used to show that live reading is active in the background.
-- The app uses the TikTok ID entered by the user, LIVE comments, and gift events for reading, sound, vibration, local settings, and username history.
-- Do not describe TikBox as an official TikTok app or an official TikTok integration.
+- LiveVoice Box is an unofficial tool and is not affiliated with, endorsed by,
+  or sponsored by TikTok, ByteDance, or any live-streaming platform.
+- Background audio is used to keep user-started comment reading and sound
+  feedback available while the streamer is live.
+- Android foreground service and notification permissions are used to show that
+  live reading audio is active in the background.
+- The app uses the stream ID entered by the user, live comments, and gift events
+  for reading, sound, vibration, local settings, and username history.
+- Do not describe LiveVoice Box as an official app or official integration.
 
-## App Name Ideas
+## App Name
 
-- LiveBurst
-- TikBox LIVE Voice
-- GiftWave for TikTok LIVE
+Recommended public name:
 
-Recommended:
-LiveBurst
+LiveVoice Box
 
 Reason:
-- short and memorable
-- feels energetic
-- fits gift animation and comment reading
 
-## Short Store Description
+- avoids implying official platform ownership
+- describes the product category without overusing platform trademarks
+- still communicates voice/comment reading clearly
 
-TikTok LIVEのコメントをリアルタイムで読み上げ。ギフト演出、ネオンUI、バックグラウンド再生対応。
+## Safe Short Store Description
 
-## Full Store Description
+配信コメントを端末内の読み上げ音声で確認できる、配信者向けの非公式サポートツール。
 
-LiveBurstは、TikTok LIVE配信をもっと盛り上げるためのコメント読み上げアプリです。
+## Safe Full Store Description
 
-- TikTok LIVEのコメントをリアルタイム取得
-- コメントを日本語TTSで自動読み上げ
-- ギフト時は派手な演出と効果音で盛り上がる
-- 配信中でも操作しやすいネオンUI
-- Androidのバックグラウンド再生に対応
-- 読み上げ速度、ピッチ、ボイスを細かく調整可能
-
-こんな人におすすめ:
-
-- TikTok LIVE配信をもっと盛り上げたい
-- コメントを見逃さずに拾いたい
-- リスナー参加感を強くしたい
-- 配信画面を映えさせたい
+LiveVoice Boxは、配信中の公開コメントを端末内の読み上げ音声で確認しやすくする、
+配信者向けの非公式サポートツールです。
 
 主な機能:
 
-- コメント読み上げ
-- ギフト優先読み上げ
-- 効果音
-- プレミアム機能
-- 共有用スクリーンショット
+- 公開LIVEコメントの読み上げ
+- ギフト受信時の短い効果音とバイブレーション
+- 読み上げ速度、ピッチ、音量の調整
+- ギフト音のON/OFF
+- 配信中に読み上げ音声を続けるためのバックグラウンド音声
+- 入力したID履歴と設定の端末内保存
 
-検索向けキーワード:
+重要:
 
-TikTok LIVE, コメント読み上げ, ライブ配信, TTS, ギフト演出, 配信ツール, コメントビューア
+- 本アプリはTikTok/ByteDanceの公式アプリではありません。
+- ログイン情報、パスワード、Cookie、ブラウザCookieは取得しません。
+- 配信サービス側の仕様変更、通信状態、OSのバックグラウンド制限により、
+  接続できない場合があります。
 
-## Screenshot Plan
+## App Store Review Note Example
 
-1. Hero screen
-   - neon main screen
-   - headline: 「TikTok LIVEが一気に盛り上がる」
+This app is an unofficial streamer support tool. It does not request account
+login credentials and does not collect cookies. Background audio is used only
+to continue user-started comment text-to-speech and short sound feedback while
+the streamer is live or using another app.
 
-2. Gift burst screen
-   - gift animation overlay visible
-   - headline: 「ギフトが来た瞬間、画面が弾ける」
+## Google Play Permission Explanation
 
-3. TTS settings screen
-   - voice speed and pitch controls
-   - headline: 「声を自分好みにカスタム」
+- Foreground service media playback: used for active live comment reading audio.
+- Notifications: used to show that live reading audio is active.
+- Vibration: used only for optional short gift feedback.
+- Wake lock: used to reduce interruptions during an active live reading session.
 
-4. Background playback screen
-   - notification and reading state
-   - headline: 「バックグラウンドでも読み上げ継続」
+## Words To Avoid
 
-5. Premium screen
-   - premium benefits visible
-   - headline: 「もっと快適に使うならプレミアム」
+- 公式
+- 公式連携
+- guaranteed connection
+- cookie acquisition
+- browser cookie extraction
+- login automation
+- silent keep-alive
+- viewer tracking
+- account monitoring
 
-## Launch Hooks
+## Required Manual Checks Before Submission
 
-- X/TikTok投稿文:
-  - 「このコメント読み上げ、ギフト演出が気持ちよすぎる」
-  - 「配信映えするTikTok LIVE読み上げアプリ作った」
-
-- Hashtags:
-  - #TikTokLIVE
-  - #配信アプリ
-  - #コメント読み上げ
-  - #ライブ配信
-  - #TikTok配信
+- Android signed AAB builds successfully.
+- Android release device keeps foreground notification visible during reading.
+- iOS Archive/IPA builds successfully with the correct signing team.
+- iPhone screen-off background reading works on a physical device.
+- Store privacy declarations match `docs/privacy.md`.
+- Store description clearly says the app is unofficial.

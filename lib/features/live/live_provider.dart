@@ -305,8 +305,15 @@ class LiveNotifier extends Notifier<LiveState> {
       final giftName = giftMap['name']?.toString() ?? 'ギフト';
       final repeatCount = _toPositiveInt(data['repeatCount']);
       final diamondCount = _toPositiveInt(giftMap['diamondCount']);
+      final diamondTotal = _toPositiveInt(data['diamondTotal']);
 
-      _handleGiftNative(nickname, giftName, repeatCount, diamondCount);
+      _handleGiftNative(
+        nickname,
+        giftName,
+        repeatCount,
+        diamondCount,
+        diamondTotal,
+      );
     });
 
     final connectCallElapsedMs = _connectRequestedAt == null
@@ -491,17 +498,26 @@ class LiveNotifier extends Notifier<LiveState> {
     String giftName,
     int? repeatCount,
     int? diamondCount,
+    int? diamondTotal,
   ) {
     if (userName.isEmpty) return;
 
     final resolvedRepeatCount = repeatCount ?? 1;
-    final totalValue =
+    final computedTotalValue =
         diamondCount == null ? null : diamondCount * resolvedRepeatCount;
+    final totalValue = diamondTotal ?? computedTotalValue;
+    final totalValueSource = diamondTotal != null
+        ? 'diamondTotal'
+        : computedTotalValue != null
+            ? 'diamondCount*repeatCount'
+            : 'fallback';
     AppLogger.info(
       'Gift event received: user=$userName gift=$giftName '
       'repeat=${repeatCount ?? 'unknown'} '
       'diamonds=${diamondCount ?? 'unknown'} '
-      'total=${totalValue ?? 'unknown'}',
+      'diamondTotal=${diamondTotal ?? 'unknown'} '
+      'totalValue=${totalValue ?? 'unknown'} '
+      'source=$totalValueSource',
     );
 
     final comment = CommentModel(
@@ -527,6 +543,10 @@ class LiveNotifier extends Notifier<LiveState> {
     _lastGiftTime = now;
 
     final soundValue = totalValue ?? 0;
+    AppLogger.info(
+      'Gift sound value resolved: soundValue=$soundValue '
+      'source=$totalValueSource',
+    );
 
     unawaited(
       effectSoundService.playGiftEvent(

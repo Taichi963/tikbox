@@ -22,6 +22,20 @@ void main() {
       expect(gift.length, greaterThan(comment.length));
     });
   });
+
+  group('EffectSoundService gift tiers', () {
+    test('classifies boundary values safely', () {
+      expect(EffectSoundService.debugGiftSoundTierName(-1), 'fallback');
+      expect(EffectSoundService.debugGiftSoundTierName(0), 'fallback');
+      expect(EffectSoundService.debugGiftSoundTierName(1), 'small');
+      expect(EffectSoundService.debugGiftSoundTierName(9), 'small');
+      expect(EffectSoundService.debugGiftSoundTierName(10), 'medium');
+      expect(EffectSoundService.debugGiftSoundTierName(99), 'medium');
+      expect(EffectSoundService.debugGiftSoundTierName(100), 'large');
+      expect(EffectSoundService.debugGiftSoundTierName(999), 'large');
+      expect(EffectSoundService.debugGiftSoundTierName(1000), 'ultraRare');
+    });
+  });
 }
 
 String _ascii(Uint8List bytes, int offset, int length) {

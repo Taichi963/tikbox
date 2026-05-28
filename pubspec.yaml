@@ -1,5 +1,5 @@
 name: tikbox
-description: TikTok comment reader with TTS
+description: Live stream comment reader with on-device TTS
 
 publish_to: 'none'
 

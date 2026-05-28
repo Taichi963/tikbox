@@ -37,7 +37,7 @@ class SpokenItem {
   });
 }
 
-class TikBoxAudioHandler extends BaseAudioHandler
+class LiveVoiceBoxAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler {
   final FlutterTts _tts = FlutterTts();
 
@@ -55,6 +55,7 @@ class TikBoxAudioHandler extends BaseAudioHandler
   bool _keepAliveRestartScheduled = false;
   Timer? _diagnosticHeartbeatTimer;
   Future<void> _keepAliveSync = Future<void>.value();
+  final Set<String> _loggedAudioSessionConfigFailures = <String>{};
 
   Future<void> ensureInitialized() async {
     if (_initialized) {
@@ -160,11 +161,23 @@ class TikBoxAudioHandler extends BaseAudioHandler
   }) async {
     try {
       await _tts.setSharedInstance(true);
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logAudioSessionConfigFailureOnce(
+        'setSharedInstance',
+        error,
+        stackTrace,
+      );
+    }
 
     try {
       await _tts.setAudioAttributesForNavigation();
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logAudioSessionConfigFailureOnce(
+        'setAudioAttributesForNavigation',
+        error,
+        stackTrace,
+      );
+    }
 
     try {
       final options = <IosTextToSpeechAudioCategoryOptions>[
@@ -184,11 +197,38 @@ class TikBoxAudioHandler extends BaseAudioHandler
             ? IosTextToSpeechAudioMode.voicePrompt
             : IosTextToSpeechAudioMode.spokenAudio,
       );
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logAudioSessionConfigFailureOnce(
+        'setIosAudioCategory',
+        error,
+        stackTrace,
+      );
+    }
 
     try {
       await _tts.setVolume(volume);
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logAudioSessionConfigFailureOnce(
+        'setVolume',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  void _logAudioSessionConfigFailureOnce(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (!_loggedAudioSessionConfigFailures.add(operation)) {
+      return;
+    }
+    AppLogger.warning(
+      'Background TTS audio session config failed: $operation',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   Future<void> setConnectionActive({
@@ -246,9 +286,10 @@ class TikBoxAudioHandler extends BaseAudioHandler
 
     final item = MediaItem(
       id: _currentItem!.id,
-      title: 'TikTok LIVE 読み上げ',
-      artist: _connectedUsername == null ? 'TikBox' : '@$_connectedUsername',
-      album: 'TikBox Background Service',
+      title: '配信コメント読み上げ',
+      artist:
+          _connectedUsername == null ? 'LiveVoice Box' : '@$_connectedUsername',
+      album: 'LiveVoice Box Background Audio',
       displayDescription: _currentItem!.text,
     );
     mediaItem.add(item);
@@ -370,11 +411,22 @@ class TikBoxAudioHandler extends BaseAudioHandler
           player.onPlayerStateChanged.listen(_handleKeepAlivePlayerState);
       _keepAlivePlayer = player;
       _keepAlivePrepared = true;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'Background keep-alive player setup failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (_keepAlivePlayer == null) {
         try {
           await player.dispose();
-        } catch (_) {}
+        } catch (disposeError, disposeStackTrace) {
+          AppLogger.warning(
+            'Background keep-alive player dispose failed after setup error',
+            error: disposeError,
+            stackTrace: disposeStackTrace,
+          );
+        }
       }
       rethrow;
     }

@@ -1,136 +1,98 @@
-# TikBox Phase 5 — リアルタイム接続実装
+# LiveVoice Box
 
-## Current Release Notes
+LiveVoice Box is an unofficial live-stream comment reading assistant for
+streamers. It reads public live comments aloud, plays short gift feedback
+sounds, and can keep reading audio active while the streamer is using other
+apps.
 
-- TikBox is an unofficial TikTok LIVE support tool and is not affiliated with, endorsed by, or sponsored by TikTok or ByteDance.
-- Current release builds connect by TikTok ID only. Cookie input and browser-cookie extraction are not used.
-- Background audio is used to keep comment text-to-speech and gift sound feedback available while streaming.
-- TikBox uses the entered TikTok ID, LIVE comments, and gift events for reading, sound, vibration, local settings, and username history.
+## Important Notice
 
-## ファイル構成
+- LiveVoice Box is not an official app and is not affiliated with, endorsed by,
+  or sponsored by TikTok, ByteDance, or any live-streaming platform.
+- The app does not ask for login credentials.
+- The app does not collect passwords, cookies, browser cookies, or app cookies.
+- The app does not provide a guaranteed connection. Public live connection
+  behavior may change depending on the streaming service, network state, OS
+  background limits, or device settings.
+- Background audio is used only to continue comment reading and sound feedback
+  while the user has started a live reading session.
 
-```
-phase5/
-├── node_server/
-│   ├── server.js          # WebSocketサーバー本体
-│   └── package.json
-└── flutter/lib/
-    ├── services/
-    │   └── websocket_service.dart   # WS接続管理（低レベル）
-    └── features/
-        ├── live/
-        │   └── live_provider.dart   # Riverpod Notifier（接続・再接続）
-        └── main/
-            └── main_screen.dart     # 接続UI統合版
-```
+## Main Features
 
----
+- Live comment text-to-speech using the device's Japanese TTS voices.
+- Gift sound and short vibration feedback.
+- Gift sound ON/OFF and volume settings.
+- Username history stored locally on the device.
+- Heartbeat and lifecycle logs for release-device troubleshooting.
+- Android foreground service and iOS background audio support for reading audio.
 
-## Nodeサーバーのセットアップ
+## Privacy Summary
 
-```bash
-cd node_server
-npm install
-node server.js
-# → WebSocket server running on ws://localhost:3000
-```
+LiveVoice Box uses the entered stream ID only to start the selected public live
+connection. Live comments and gift events are processed inside the app for
+reading, sound, and vibration.
 
----
+Stored locally on the device:
 
-## Flutter側のセットアップ
+- app settings
+- TTS settings
+- gift sound/vibration settings
+- username history
 
-### pubspec.yaml に追加
-```yaml
-dependencies:
-  web_socket_channel: ^3.0.1
-```
+Not collected by the app:
 
-### IPアドレスの設定
-`live_provider.dart` の以下の定数を変更してください。
+- login ID or password
+- cookies
+- browser/app session cookies
+- private messages
+- payment information
 
-```dart
-const String _kWsUrl = 'ws://192.168.1.10:3000';
-// ↑ PCのローカルIPアドレスに変更
-```
+If analytics, a backend server, or external TTS is added in the future, the
+privacy policy and store privacy declarations must be updated before release.
 
-**IPアドレスの確認方法:**
-- Windows: `ipconfig` → IPv4アドレス
-- Mac/Linux: `ifconfig` → en0のinet
-- Android エミュレーター: `ws://10.0.2.2:3000`
+## Permissions And Background Audio
 
-### ファイルの配置
-```
-lib/
-├── services/
-│   └── websocket_service.dart   ← 新規追加
-└── features/
-    ├── live/                    ← フォルダ新規作成
-    │   └── live_provider.dart   ← 新規追加
-    └── main/
-        └── main_screen.dart     ← 既存ファイルを置き換え
-```
+Android permissions are used for:
 
----
+- `INTERNET`: connect to the selected public live stream.
+- `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MEDIA_PLAYBACK`: keep the reading
+  audio service visible while active.
+- `POST_NOTIFICATIONS`: show the active reading notification on supported
+  Android versions.
+- `WAKE_LOCK`: support stable reading during a live session.
+- `VIBRATE`: provide optional short gift vibration feedback.
 
-## 接続フロー
+iOS background audio is used to continue user-started reading audio during a
+live session. It must not be described as a silent keep-alive feature in store
+text.
 
-```
-[メインボタンタップ]
-       ↓
-[ユーザー名入力ダイアログ]
-       ↓
-liveProvider.startLive(username)
-       ↓
-WebSocketService.connect('ws://...')
-       ↓ (接続確立)
-WS送信: { type: 'connect', username: '...' }
-       ↓
-[Nodeサーバー] tiktok-live-connector で接続
-       ↓
-WS受信: { type: 'status', status: 'connected' }
-       ↓
-mainProvider.startLive()  // ライブON・wakelock有効
-       ↓
-[コメント到着]
-WS受信: { type: 'comment', user: '...', text: '...' }
-       ↓
-mainProvider.addComment()
-       ↓
-ttsProvider.enqueueComment()  // TTS読み上げ
-```
+## Store Review Positioning
 
----
+Recommended wording:
 
-## 再接続ロジック
+> LiveVoice Box is an unofficial tool for streamers that reads public live
+> comments aloud using on-device text-to-speech. It does not require login
+> credentials and does not collect cookies. Background audio is used so the
+> streamer can continue hearing comment reading while using other apps during a
+> live session.
 
-切断を検知すると自動で再接続を試みます。
+Avoid wording that implies:
 
-| 試行回数 | 待機時間 |
-|---|---|
-| 1回目 | 1秒 |
-| 2回目 | 2秒 |
-| 3回目 | 4秒 |
-| 4回目 | 8秒 |
-| 5回目 | 16秒 |
-| 上限超過 | エラー表示・手動再接続 |
+- official partnership or official integration
+- guaranteed live connection
+- account login, cookie extraction, or browser-cookie access
+- user tracking, viewer surveillance, or identity matching
+- silent background keep-alive as a product feature
 
----
+## Release Checks
 
-## バグりやすいポイント
+Before store submission, confirm on real release builds:
 
-| ポイント | 問題 | 対策 |
-|---|---|---|
-| `_channel!.ready` の待機忘れ | 未確立のまま送信してクラッシュ | `await _channel!.ready` を必ず入れる |
-| `cancelOnError: false` | エラーで購読が切れてメッセージを取りこぼす | `listen()` に明示的に指定 |
-| ギフトのストリーク | 1件ずつ読み上げて連発される | Node側で `repeatEnd` チェック |
-| `_disposed` チェック漏れ | dispose後にstateを書いてStateError | 全コールバックの先頭で確認 |
-| 再接続の無限ループ | エラー→再接続→エラーが永続 | `_kMaxReconnectAttempts` で上限管理 |
-| ping/pong忘れ | Wi-Fi切断を数分間検知できない | 20秒ごとにping、5秒でpongタイムアウト |
-
----
-
-## 実機テスト時の注意
-
-- **Android実機**: PCと同じWi-Fiに接続し、PCのIPを指定
-- **iOS実機**: 現行アプリはTikTokへのHTTPS/WSS接続を使います。ATS例外が必要になった場合のみ、理由を整理して追加してください。
-- **ファイアウォール**: PCのポート3000を開放してください
+- `flutter analyze --no-pub` has no issues.
+- Android signed AAB builds successfully.
+- iOS Archive/IPA builds successfully on macOS with a valid signing team.
+- iPhone screen-off background test keeps heartbeat and reading audio stable.
+- Android screen-off background test keeps notification, heartbeat, and reading
+  audio stable.
+- Gift sound, gift vibration, comment reading, reconnect, and Stop behavior work
+  on physical devices.

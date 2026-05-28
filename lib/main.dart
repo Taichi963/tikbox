@@ -53,7 +53,7 @@ Future<void> main() async {
 
       runApp(
         const ProviderScope(
-          child: TikBoxApp(),
+          child: LiveVoiceBoxApp(),
         ),
       );
 
@@ -69,15 +69,15 @@ Future<void> main() async {
   );
 }
 
-class TikBoxApp extends StatelessWidget {
-  const TikBoxApp({super.key});
+class LiveVoiceBoxApp extends StatelessWidget {
+  const LiveVoiceBoxApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final base = ThemeData.dark(useMaterial3: true);
 
     return MaterialApp(
-      title: 'TikBox',
+      title: 'LiveVoice Box',
       debugShowCheckedModeBanner: false,
       theme: base.copyWith(
         scaffoldBackgroundColor: const Color(0xFF050815),

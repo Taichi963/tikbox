@@ -23,7 +23,7 @@ class TtsQueueItem {
 }
 
 class TtsService {
-  TikBoxAudioHandler? _handler;
+  LiveVoiceBoxAudioHandler? _handler;
 
   final List<TtsQueueItem> _queue = <TtsQueueItem>[];
   Timer? _playbackRetryTimer;
@@ -74,12 +74,12 @@ class TtsService {
 
     try {
       _handler ??= await AudioService.init(
-        builder: TikBoxAudioHandler.new,
+        builder: LiveVoiceBoxAudioHandler.new,
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.taichi963.tikbox.tts',
-          androidNotificationChannelName: 'TikBox Live Reading',
+          androidNotificationChannelName: 'LiveVoice Box Reading',
           androidNotificationChannelDescription:
-              'Keeps TikTok LIVE comment reading active in background',
+              'Keeps live comment reading audio active in background',
           androidNotificationOngoing: false,
           androidStopForegroundOnPause: false,
           androidNotificationIcon: 'mipmap/ic_launcher',
