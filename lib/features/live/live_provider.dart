@@ -91,6 +91,11 @@ class LiveNotifier extends Notifier<LiveState> {
     }
 
     if (state.isConnecting) {
+      AppLogger.warning(
+        'startLive ignored because connection is already in progress: '
+        'status=${state.wsStatus.name} client=${_client != null} '
+        'reconnectTimer=${_reconnectTimer?.isActive ?? false}',
+      );
       return;
     }
 
@@ -114,6 +119,7 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   Future<void> retryConnection() async {
+    AppLogger.info('retryConnection called');
     if (_username == null) {
       state = state.copyWith(
         wsStatus: WsStatus.error,
@@ -139,6 +145,12 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   Future<void> stopLive() async {
+    final stopStartedAt = DateTime.now();
+    AppLogger.info(
+      'stopLive called: status=${state.wsStatus.name} '
+      'isConnecting=${state.isConnecting} client=${_client != null} '
+      'reconnectTimer=${_reconnectTimer?.isActive ?? false}',
+    );
     _manualStopRequested = true;
     _cancelReconnectTimer();
     _cancelConnectSlowLogTimer();
@@ -148,6 +160,9 @@ class LiveNotifier extends Notifier<LiveState> {
     _connectRequestedAt = null;
     final previousClient = _client;
     _client = null;
+    if (previousClient != null) {
+      AppLogger.info('Disconnecting current TikTok client');
+    }
     previousClient?.disconnect();
 
     await ttsService.stopAll();
@@ -164,6 +179,10 @@ class LiveNotifier extends Notifier<LiveState> {
     }
     _stopDiagnosticHeartbeat();
     _cancelConnectSlowLogTimer();
+    AppLogger.info(
+      'stopLive completed in '
+      '${DateTime.now().difference(stopStartedAt).inMilliseconds}ms',
+    );
   }
 
   Future<void> skipCurrentTts() async {
@@ -232,6 +251,11 @@ class LiveNotifier extends Notifier<LiveState> {
     _cancelConnectSlowLogTimer();
     final previousClient = _client;
     _client = null;
+    if (previousClient != null) {
+      AppLogger.info(
+        'Disconnecting previous TikTok client before reconnect for @$username',
+      );
+    }
     previousClient?.disconnect();
     _manualStopRequested = false;
 
@@ -585,12 +609,14 @@ class LiveNotifier extends Notifier<LiveState> {
       } else if (value >= _mediumGiftVibrationThreshold) {
         await HapticFeedback.mediumImpact();
       } else {
-        await HapticFeedback.lightImpact();
+        // lightImpact is easy to miss on real devices, so gifts use at least
+        // medium feedback while still respecting the ON/OFF setting.
+        await HapticFeedback.mediumImpact();
       }
       AppLogger.info('Gift vibration completed: $feedback value=$value');
     } catch (error, stackTrace) {
       AppLogger.warning(
-        'Gift vibration failed',
+        'Gift vibration failed: error=$error',
         error: error,
         stackTrace: stackTrace,
       );
@@ -692,6 +718,10 @@ class LiveNotifier extends Notifier<LiveState> {
     _reconnectTimer = Timer(delay, () {
       _reconnectTimer = null;
       if (_disposed || _manualStopRequested || _username == null) {
+        AppLogger.info(
+          'Reconnect fired but skipped: disposed=$_disposed '
+          'manualStop=$_manualStopRequested username=${_username != null}',
+        );
         return;
       }
       AppLogger.info('Reconnect fired for @$_username');
