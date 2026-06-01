@@ -4,12 +4,14 @@
 
 - LiveVoice Box is an unofficial tool and is not affiliated with, endorsed by,
   or sponsored by TikTok, ByteDance, or any live-streaming platform.
-- Background audio is used to keep user-started comment reading and sound
+- Background audio is used to keep user-started comment reading and short sound
   feedback available while the streamer is live.
 - Android foreground service and notification permissions are used to show that
   live reading audio is active in the background.
 - The app uses the stream ID entered by the user, live comments, and gift events
   for reading, sound, vibration, local settings, and username history.
+- Users should use the app for their own live stream or streams they are
+  authorized to support.
 - Do not describe LiveVoice Box as an official app or official integration.
 
 ## App Name
@@ -26,40 +28,47 @@ Reason:
 
 ## Safe Short Store Description
 
-配信コメントを端末内の読み上げ音声で確認できる、配信者向けの非公式サポートツール。
+LiveVoice Boxは、ライブ配信中のコメント読み上げとギフト通知音を
+サポートする非公式の配信補助アプリです。
 
 ## Safe Full Store Description
 
-LiveVoice Boxは、配信中の公開コメントを端末内の読み上げ音声で確認しやすくする、
-配信者向けの非公式サポートツールです。
+LiveVoice Boxは、ライブ配信中の公開コメントを端末内の読み上げ音声で
+確認しやすくする、配信者向けの非公式サポートツールです。
 
 主な機能:
 
 - 公開LIVEコメントの読み上げ
-- ギフト受信時の短い効果音とバイブレーション
+- ギフト受信時の短い通知音とバイブレーション
 - 読み上げ速度、ピッチ、音量の調整
 - ギフト音のON/OFF
-- 配信中に読み上げ音声を続けるためのバックグラウンド音声
-- 入力したID履歴と設定の端末内保存
+- ユーザーが開始した読み上げ音声を続けるためのバックグラウンド音声
+- 入力した配信ID履歴と設定の端末内保存
 
 重要:
 
 - 本アプリはTikTok/ByteDanceの公式アプリではありません。
-- ログイン情報、パスワード、Cookie、ブラウザCookieは取得しません。
-- 配信サービス側の仕様変更、通信状態、OSのバックグラウンド制限により、
-  接続できない場合があります。
+- TikTokのログイン情報、パスワード、Cookie、ブラウザCookieは取得しません。
+- ユーザー自身の配信、または許可された配信の補助用途で利用してください。
+- 配信サービス側の仕様変更、配信状態、通信環境、OSのバックグラウンド制限により、
+  接続や読み上げを利用できない場合があります。
 
 ## App Store Review Note Example
 
-This app is an unofficial streamer support tool. It does not request account
-login credentials and does not collect cookies. Background audio is used only
-to continue user-started comment text-to-speech and short sound feedback while
-the streamer is live or using another app.
+LiveVoice Box is an unofficial streamer support tool and is not affiliated with
+TikTok, ByteDance, or any live-streaming platform. The app does not request
+account login credentials, passwords, cookies, browser cookies, or app cookies.
+Background audio is used only to continue user-started comment text-to-speech
+and short sound feedback while the streamer is live or using another app.
+Users are expected to use the app for their own live stream or streams they are
+authorized to support.
 
 ## Google Play Permission Explanation
 
-- Foreground service media playback: used for active live comment reading audio.
-- Notifications: used to show that live reading audio is active.
+- Foreground service media playback: used while the user has started live
+  comment reading audio.
+- Notifications: used to show that live reading audio is active in the
+  background.
 - Vibration: used only for optional short gift feedback.
 - Wake lock: used to reduce interruptions during an active live reading session.
 
@@ -82,4 +91,5 @@ the streamer is live or using another app.
 - iOS Archive/IPA builds successfully with the correct signing team.
 - iPhone screen-off background reading works on a physical device.
 - Store privacy declarations match `docs/privacy.md`.
+- Store terms match `docs/terms.md`.
 - Store description clearly says the app is unofficial.

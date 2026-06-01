@@ -43,6 +43,9 @@ class EffectSoundService {
   static String debugGiftSoundTierName(int value) =>
       _giftSoundTierForValue(value).name;
 
+  @visibleForTesting
+  static bool debugIsHeartMeGift(String? giftName) => _isHeartMeGift(giftName);
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -72,6 +75,7 @@ class EffectSoundService {
       _tones['small_0'] = _buildSmallCrystal();
       _tones['small_1'] = _buildSmallBubble();
       _tones['small_2'] = _buildSmallCoin();
+      _tones['small_heart_me'] = _buildHeartMeTone();
       _tones['rare_small'] = _buildRareSmallHit();
       for (int i = 1; i <= 10; i++) {
         final pitchMultiplier = 1.0 + (i * 0.05);
@@ -135,11 +139,12 @@ class EffectSoundService {
   Future<void> playGiftEvent({
     required int value,
     required int comboStreak,
+    String? giftName,
   }) async {
     AppLogger.info(
       'playGiftEvent called: enabled=$_giftSoundEnabled '
       'volume=${_volume.toStringAsFixed(2)} value=$value '
-      'comboStreak=$comboStreak',
+      'comboStreak=$comboStreak giftName=${giftName ?? 'unknown'}',
     );
     if (!_giftSoundEnabled) {
       AppLogger.info('playGiftEvent skipped: giftSoundEnabled=false');
@@ -149,6 +154,12 @@ class EffectSoundService {
     final randomVal = _random.nextDouble();
     final comboTier = _comboTier(comboStreak);
     final giftTier = _giftSoundTier(value);
+
+    if (_isHeartMeGift(giftName)) {
+      AppLogger.info('selected gift tone tier: heartMe comboTier=$comboTier');
+      await _playHeartMeGift(comboTier);
+      return;
+    }
 
     if (giftTier == _GiftSoundTier.ultraRare) {
       AppLogger.info('selected gift tone tier: ultraRare comboTier=$comboTier');
@@ -190,6 +201,14 @@ class EffectSoundService {
     return _GiftSoundTier.ultraRare;
   }
 
+  static bool _isHeartMeGift(String? giftName) {
+    final normalized =
+        (giftName ?? '').toLowerCase().replaceAll(RegExp(r'[\s_\-・･]'), '');
+    return normalized.contains('heartme') ||
+        normalized.contains('ハートミー') ||
+        normalized.contains('はーとみー');
+  }
+
   Future<void> _playSmallGift(double randomVal, int comboTier) async {
     if (comboTier > 0) {
       await _playSmallGiftCombo(randomVal, comboTier);
@@ -204,6 +223,17 @@ class EffectSoundService {
       final toneName = 'small_$variation';
       AppLogger.info('selected gift tone: $toneName');
       await _playTone(toneName);
+    }
+  }
+
+  Future<void> _playHeartMeGift(int comboTier) async {
+    await _playTone('small_heart_me');
+    if (comboTier >= 2) {
+      _playToneAfter(
+        const Duration(milliseconds: 54),
+        'small_1',
+        volumeScale: 0.56,
+      );
     }
   }
 
@@ -626,6 +656,20 @@ class EffectSoundService {
       0.001,
       0.014,
       0.12,
+    );
+  }
+
+  static _GeneratedEffectTone _buildHeartMeTone() {
+    return _generateTone(
+      const [
+        _ToneNote(1046, 0.020, 0.24),
+        _ToneNote(1568, 0.026, 0.32),
+        _ToneNote(2093, 0.052, 0.38),
+      ],
+      0.001,
+      0.018,
+      0.12,
+      interNoteGap: 0.002,
     );
   }
 

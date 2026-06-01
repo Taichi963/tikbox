@@ -56,6 +56,7 @@ class LiveNotifier extends Notifier<LiveState> {
   static const Duration _resumeReconnectRetryAfter = Duration(seconds: 30);
   static const Duration _diagnosticHeartbeatInterval = Duration(seconds: 30);
   static const Duration _connectSlowLogThreshold = Duration(seconds: 20);
+  static const Duration _connectTimeoutThreshold = Duration(seconds: 45);
 
   final Uuid _uuid = const Uuid();
 
@@ -64,6 +65,7 @@ class LiveNotifier extends Notifier<LiveState> {
   Timer? _reconnectTimer;
   Timer? _diagnosticHeartbeatTimer;
   Timer? _connectSlowLogTimer;
+  Timer? _connectTimeoutTimer;
   bool _disposed = false;
   bool _manualStopRequested = false;
   int _autoReconnectAttempts = 0;
@@ -85,7 +87,7 @@ class LiveNotifier extends Notifier<LiveState> {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: 'ユーザー名を入力してください',
+        errorMessage: '配信IDを入力してください。@付き、@なし、TikTok URLが使えます。',
       );
       return;
     }
@@ -153,7 +155,7 @@ class LiveNotifier extends Notifier<LiveState> {
     );
     _manualStopRequested = true;
     _cancelReconnectTimer();
-    _cancelConnectSlowLogTimer();
+    _cancelConnectAttemptTimers();
     _autoReconnectAttempts = 0;
     _resetGiftComboState();
     _username = null;
@@ -178,7 +180,7 @@ class LiveNotifier extends Notifier<LiveState> {
       );
     }
     _stopDiagnosticHeartbeat();
-    _cancelConnectSlowLogTimer();
+    _cancelConnectAttemptTimers();
     AppLogger.info(
       'stopLive completed in '
       '${DateTime.now().difference(stopStartedAt).inMilliseconds}ms',
@@ -248,7 +250,7 @@ class LiveNotifier extends Notifier<LiveState> {
     );
 
     _cancelReconnectTimer();
-    _cancelConnectSlowLogTimer();
+    _cancelConnectAttemptTimers();
     final previousClient = _client;
     _client = null;
     if (previousClient != null) {
@@ -265,7 +267,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     client.on(EventType.connected, (evt) {
       if (_disposed || !identical(_client, client)) return;
-      _cancelConnectSlowLogTimer();
+      _cancelConnectAttemptTimers();
       final elapsedMs = clientConnectStartedAt == null
           ? null
           : DateTime.now().difference(clientConnectStartedAt).inMilliseconds;
@@ -280,7 +282,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     client.on(EventType.disconnected, (evt) {
       if (_disposed || !identical(_client, client)) return;
-      _cancelConnectSlowLogTimer();
+      _cancelConnectAttemptTimers();
       AppLogger.warning(
         'TikTok disconnected event received for @$username data=${evt.data}',
       );
@@ -298,7 +300,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     client.on('error', (evt) {
       if (_disposed || !identical(_client, client)) return;
-      _cancelConnectSlowLogTimer();
+      _cancelConnectAttemptTimers();
       AppLogger.error(
           'TikTok client error event for @$username data=${evt.data}');
       _handleStatusError(evt.data?['error']?.toString() ?? '不明なエラーが発生しました');
@@ -352,6 +354,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
     clientConnectStartedAt = DateTime.now();
     _scheduleConnectSlowLog(username, client);
+    _scheduleConnectTimeout(username, client);
     unawaited(
       client.connect().then<void>((_) {
         if (_disposed || !identical(_client, client)) {
@@ -366,7 +369,7 @@ class LiveNotifier extends Notifier<LiveState> {
         if (_disposed || _manualStopRequested || !identical(_client, client)) {
           return;
         }
-        _cancelConnectSlowLogTimer();
+        _cancelConnectAttemptTimers();
         AppLogger.error(
           'TikTok connection failed totally',
           error: error,
@@ -381,6 +384,7 @@ class LiveNotifier extends Notifier<LiveState> {
     if (_disposed || _username == null) return;
 
     _manualStopRequested = false;
+    _cancelConnectAttemptTimers();
     _resetReconnectState();
     final elapsedMs = _connectRequestedAt == null
         ? null
@@ -576,6 +580,7 @@ class LiveNotifier extends Notifier<LiveState> {
       effectSoundService.playGiftEvent(
         value: soundValue,
         comboStreak: _comboStreak,
+        giftName: giftName,
       ),
     );
 
@@ -671,7 +676,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _disposed = true;
     _manualStopRequested = true;
     _cancelReconnectTimer();
-    _cancelConnectSlowLogTimer();
+    _cancelConnectAttemptTimers();
     _stopDiagnosticHeartbeat();
     _connectRequestedAt = null;
     _resetGiftComboState();
@@ -776,12 +781,74 @@ class LiveNotifier extends Notifier<LiveState> {
         '${_connectSlowLogThreshold.inSeconds}s for @$username '
         'status=${state.wsStatus.name} isConnecting=${state.isConnecting}',
       );
+      state = state.copyWith(
+        errorMessage: '接続に時間がかかっています。IDが正しいか、配信中か、通信環境を確認してください。',
+      );
     });
+  }
+
+  void _scheduleConnectTimeout(String username, TikTokLiveClient client) {
+    _cancelConnectTimeoutTimer();
+    _connectTimeoutTimer = Timer(_connectTimeoutThreshold, () {
+      _connectTimeoutTimer = null;
+      if (_disposed || _manualStopRequested || !identical(_client, client)) {
+        return;
+      }
+
+      AppLogger.warning(
+        'TikTok client.connect timed out after '
+        '${_connectTimeoutThreshold.inSeconds}s for @$username '
+        'status=${state.wsStatus.name} isConnecting=${state.isConnecting}',
+      );
+
+      final shouldContinueReconnect =
+          state.reconnectAttempts > 0 && _username != null;
+      _cancelConnectSlowLogTimer();
+      _connectRequestedAt = null;
+      _resetGiftComboState();
+      final timedOutClient = _client;
+      _client = null;
+      try {
+        timedOutClient?.disconnect();
+      } catch (error, stackTrace) {
+        AppLogger.warning(
+          'Error during timeout disconnect',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+
+      if (shouldContinueReconnect) {
+        _scheduleReconnect('接続できませんでした');
+        return;
+      }
+
+      _resetReconnectState();
+      unawaited(ttsService.setConnectionActive(active: false));
+      ref.read(mainProvider.notifier).stopLive();
+      state = state.copyWith(
+        wsStatus: WsStatus.error,
+        isConnecting: false,
+        reconnectAttempts: 0,
+        errorMessage: '接続できませんでした。IDが正しいか、配信中か、通信環境を確認してください。',
+      );
+      _stopDiagnosticHeartbeat();
+    });
+  }
+
+  void _cancelConnectAttemptTimers() {
+    _cancelConnectSlowLogTimer();
+    _cancelConnectTimeoutTimer();
   }
 
   void _cancelConnectSlowLogTimer() {
     _connectSlowLogTimer?.cancel();
     _connectSlowLogTimer = null;
+  }
+
+  void _cancelConnectTimeoutTimer() {
+    _connectTimeoutTimer?.cancel();
+    _connectTimeoutTimer = null;
   }
 
   void _startDiagnosticHeartbeat() {
@@ -819,7 +886,7 @@ class LiveNotifier extends Notifier<LiveState> {
   }
 
   String _normalizeUsername(String input) {
-    final trimmed = input.replaceAll('\u3000', ' ').trim();
+    final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
     if (trimmed.isEmpty) {
       return '';
     }

@@ -35,6 +35,14 @@ void main() {
       expect(EffectSoundService.debugGiftSoundTierName(999), 'large');
       expect(EffectSoundService.debugGiftSoundTierName(1000), 'ultraRare');
     });
+
+    test('detects Heart Me gift names safely', () {
+      expect(EffectSoundService.debugIsHeartMeGift('Heart Me'), isTrue);
+      expect(EffectSoundService.debugIsHeartMeGift('heart-me'), isTrue);
+      expect(EffectSoundService.debugIsHeartMeGift('ハートミー'), isTrue);
+      expect(EffectSoundService.debugIsHeartMeGift('Rose'), isFalse);
+      expect(EffectSoundService.debugIsHeartMeGift(null), isFalse);
+    });
   });
 }
 

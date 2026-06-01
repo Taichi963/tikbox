@@ -160,7 +160,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   String _normalizeUsername(String input) {
-    final trimmed = input.replaceAll('\u3000', ' ').trim();
+    final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
     if (trimmed.isEmpty) {
       return '';
     }
@@ -295,215 +295,250 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () => ref.read(liveProvider.notifier).skipCurrentTts(),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _RecordingHud(isLive: isLive),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isKeyboardVisible =
+                      MediaQuery.viewInsetsOf(context).bottom > 0;
+                  final commentSection = isKeyboardVisible
+                      ? SizedBox(
+                          height: (constraints.maxHeight * 0.35)
+                              .clamp(180.0, 280.0)
+                              .toDouble(),
+                          child: const _CommentSection(),
+                        )
+                      : const Expanded(child: _CommentSection());
+                  final content = Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _RecordingHud(isLive: isLive),
+                            ),
+                            const SizedBox(width: 10),
+                            _HudIconButton(
+                              icon: Icons.tune_rounded,
+                              glowColor: const Color(0xFFEF6CFF),
+                              onTap: () => _openSettings(context),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        _HudIconButton(
-                          icon: Icons.tune_rounded,
-                          glowColor: const Color(0xFFEF6CFF),
-                          onTap: () => _openSettings(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: NeonPanel(
-                      glowColor: isLive
-                          ? const Color(0xFFFF4F7D)
-                          : const Color(0xFF00E5FF),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: NeonPanel(
+                          glowColor: isLive
+                              ? const Color(0xFFFF4F7D)
+                              : const Color(0xFF00E5FF),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                child: NeonText(
-                                  isLive ? 'ライブ接続中' : 'ライブ接続待機中',
-                                  glowColor: isLive
-                                      ? const Color(0xFFFF6D91)
-                                      : const Color(0xFF72F6FF),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ),
-                              if (isLive) const LiveGlowDot(),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: _usernameController,
-                            enabled: !liveState.isConnecting && !isLive,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: '配信ID（@から始まるID）',
-                              hintText: '例: @jppachi',
-                              helperText: '表示名ではなく、配信ページの @ID を入力',
-                              labelStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
-                              ),
-                              hintStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.34),
-                              ),
-                              helperStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.58),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.05),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide(
-                                  color: const Color(0xFF72F6FF)
-                                      .withValues(alpha: 0.22),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '非公式ツールです。ログイン情報・Cookieは取得しません。接続できない場合があります。',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.62),
-                              fontSize: 12,
-                              height: 1.35,
-                            ),
-                          ),
-                          if (_savedUsernames.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: _savedUsernames.map((username) {
-                                return GestureDetector(
-                                  onLongPress: () =>
-                                      _confirmRemoveSavedUsername(username),
-                                  child: ActionChip(
-                                    label: Text('@$username'),
-                                    labelStyle: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.86),
-                                      fontWeight: FontWeight.w700,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: NeonText(
+                                      isLive ? 'ライブ接続中' : 'ライブ接続待機中',
+                                      glowColor: isLive
+                                          ? const Color(0xFFFF6D91)
+                                          : const Color(0xFF72F6FF),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.2,
+                                      ),
                                     ),
-                                    visualDensity: VisualDensity.compact,
-                                    backgroundColor:
-                                        Colors.white.withValues(alpha: 0.05),
-                                    side: BorderSide(
+                                  ),
+                                  if (isLive) const LiveGlowDot(),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              TextField(
+                                controller: _usernameController,
+                                enabled: !liveState.isConnecting && !isLive,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: '配信ID / TikTok URL',
+                                  hintText: '例: @jppachi または jppachi',
+                                  helperText: '表示名ではなく配信ページの @ID を入力。URLも使えます',
+                                  helperMaxLines: 2,
+                                  labelStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                  ),
+                                  hintStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.34),
+                                  ),
+                                  helperStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.58),
+                                  ),
+                                  filled: true,
+                                  fillColor:
+                                      Colors.white.withValues(alpha: 0.05),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                    borderSide: BorderSide(
                                       color: const Color(0xFF72F6FF)
                                           .withValues(alpha: 0.22),
                                     ),
-                                    onPressed: liveState.isConnecting || isLive
-                                        ? null
-                                        : () => _selectSavedUsername(
-                                              username,
-                                            ),
                                   ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _PrimaryLiveButton(
-                                  isLive: isLive,
-                                  isConnecting: liveState.isConnecting,
-                                  onPressed: () async {
-                                    if (liveState.isConnecting || isLive) {
-                                      await ref
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '非公式ツールです。ログイン情報・Cookieは取得しません。接続できない場合があります。',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.62),
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (_savedUsernames.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: _savedUsernames.map((username) {
+                                    return GestureDetector(
+                                      onLongPress: () =>
+                                          _confirmRemoveSavedUsername(username),
+                                      child: ActionChip(
+                                        label: Text('@$username'),
+                                        labelStyle: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.86),
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                        backgroundColor: Colors.white
+                                            .withValues(alpha: 0.05),
+                                        side: BorderSide(
+                                          color: const Color(0xFF72F6FF)
+                                              .withValues(alpha: 0.22),
+                                        ),
+                                        onPressed:
+                                            liveState.isConnecting || isLive
+                                                ? null
+                                                : () => _selectSavedUsername(
+                                                      username,
+                                                    ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _PrimaryLiveButton(
+                                      isLive: isLive,
+                                      isConnecting: liveState.isConnecting,
+                                      onPressed: () async {
+                                        if (liveState.isConnecting || isLive) {
+                                          await ref
+                                              .read(liveProvider.notifier)
+                                              .stopLive();
+                                          return;
+                                        }
+                                        final username =
+                                            _usernameController.text;
+                                        AppLogger.info(
+                                            'Connect button pressed');
+                                        await ref
+                                            .read(liveProvider.notifier)
+                                            .startLive(username);
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _StatusChip(
+                                      label: _statusLabel(liveState.wsStatus),
+                                      accent: _statusColor(liveState.wsStatus),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (liveState.isConnecting) ...[
+                                const SizedBox(height: 14),
+                                const LinearProgressIndicator(
+                                  minHeight: 4,
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(999)),
+                                  backgroundColor: Color(0x22FFFFFF),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xFFFFC64C),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  _InfoPill(
+                                    label: connectedUsername == null
+                                        ? '未接続'
+                                        : '@$connectedUsername',
+                                    accent: const Color(0xFF72F6D0),
+                                    icon: Icons.person_rounded,
+                                  ),
+                                  _InfoPill(
+                                    label:
+                                        '話速: ${ttsSettings.rate.toStringAsFixed(2)}',
+                                    accent: const Color(0xFF6BA8FF),
+                                    icon: Icons.graphic_eq_rounded,
+                                  ),
+                                  _InfoPill(
+                                    label:
+                                        'ピッチ: ${ttsSettings.pitch.toStringAsFixed(2)}',
+                                    accent: const Color(0xFFEF6CFF),
+                                    icon: Icons.multitrack_audio_rounded,
+                                  ),
+                                ],
+                              ),
+                              if (liveState.errorMessage != null) ...[
+                                const SizedBox(height: 12),
+                                _ErrorActionCard(
+                                  message: liveState.errorMessage!,
+                                  onRetry: liveState.isConnecting
+                                      ? null
+                                      : ref
                                           .read(liveProvider.notifier)
-                                          .stopLive();
-                                      return;
-                                    }
-                                    final username = _usernameController.text;
-                                    AppLogger.info('Connect button pressed');
-                                    await ref
-                                        .read(liveProvider.notifier)
-                                        .startLive(username);
-                                  },
+                                          .retryConnection,
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _StatusChip(
-                                  label: _statusLabel(liveState.wsStatus),
-                                  accent: _statusColor(liveState.wsStatus),
-                                ),
-                              ),
+                              ],
                             ],
                           ),
-                          if (liveState.isConnecting) ...[
-                            const SizedBox(height: 14),
-                            const LinearProgressIndicator(
-                              minHeight: 4,
-                              borderRadius:
-                                  BorderRadius.all(Radius.circular(999)),
-                              backgroundColor: Color(0x22FFFFFF),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Color(0xFFFFC64C),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              _InfoPill(
-                                label: connectedUsername == null
-                                    ? '未接続'
-                                    : '@$connectedUsername',
-                                accent: const Color(0xFF72F6D0),
-                                icon: Icons.person_rounded,
-                              ),
-                              _InfoPill(
-                                label:
-                                    '話速: ${ttsSettings.rate.toStringAsFixed(2)}',
-                                accent: const Color(0xFF6BA8FF),
-                                icon: Icons.graphic_eq_rounded,
-                              ),
-                              _InfoPill(
-                                label:
-                                    'ピッチ: ${ttsSettings.pitch.toStringAsFixed(2)}',
-                                accent: const Color(0xFFEF6CFF),
-                                icon: Icons.multitrack_audio_rounded,
-                              ),
-                            ],
-                          ),
-                          if (liveState.errorMessage != null) ...[
-                            const SizedBox(height: 12),
-                            _ErrorActionCard(
-                              message: liveState.errorMessage!,
-                              onRetry: liveState.isConnecting
-                                  ? null
-                                  : ref
-                                      .read(liveProvider.notifier)
-                                      .retryConnection,
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
+                      const SizedBox(height: 14),
+                      commentSection,
+                    ],
+                  );
+
+                  if (!isKeyboardVisible) {
+                    return content;
+                  }
+
+                  return SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: content,
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Expanded(child: _CommentSection()),
-                ],
+                  );
+                },
               ),
             ),
           ),
@@ -624,7 +659,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                 ),
                                 decoration: InputDecoration(
                                   labelText: '読み上げボイス',
-                                  helperText: '端末内の日本語音声を優先表示しています',
+                                  helperText: '選ぶと試聴します。「この声にする」で保存します',
+                                  helperMaxLines: 2,
                                   labelStyle: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.75),
                                   ),
@@ -1098,9 +1134,9 @@ class _PrimaryLiveButton extends StatelessWidget {
             ? const Color(0xFFFF4F7D)
             : const Color(0xFF58F5D1);
     final label = isConnecting
-        ? '接続をキャンセル'
+        ? '接続を中止'
         : isLive
-            ? '停止'
+            ? '配信を停止'
             : '接続開始';
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1239,7 +1275,7 @@ class _ErrorActionCard extends StatelessWidget {
           const SizedBox(width: 12),
           FilledButton.tonal(
             onPressed: onRetry,
-            child: const Text('再接続'),
+            child: const Text('もう一度試す'),
           ),
         ],
       ),

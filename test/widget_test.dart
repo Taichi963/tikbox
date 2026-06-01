@@ -19,6 +19,6 @@ void main() {
     );
 
     expect(find.text('ライブ接続待機中'), findsOneWidget);
-    expect(find.text('配信ID（@から始まるID）'), findsOneWidget);
+    expect(find.text('配信ID / TikTok URL'), findsOneWidget);
   });
 }
