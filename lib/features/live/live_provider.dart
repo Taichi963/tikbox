@@ -83,11 +83,13 @@ class LiveNotifier extends Notifier<LiveState> {
   Future<void> startLive(String rawUsername) async {
     AppLogger.info('startLive called');
     final username = _normalizeUsername(rawUsername);
-    if (username.isEmpty) {
+    final inputError = _usernameInputError(rawUsername, username);
+    if (inputError != null) {
+      AppLogger.warning('startLive rejected username input before connect');
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: '配信IDを入力してください。@付き、@なし、TikTok URLが使えます。',
+        errorMessage: inputError,
       );
       return;
     }
@@ -165,7 +167,7 @@ class LiveNotifier extends Notifier<LiveState> {
     if (previousClient != null) {
       AppLogger.info('Disconnecting current TikTok client');
     }
-    previousClient?.disconnect();
+    _disconnectClientSafely(previousClient, 'stopLive');
 
     await ttsService.stopAll();
     await ttsService.setConnectionActive(active: false);
@@ -258,7 +260,7 @@ class LiveNotifier extends Notifier<LiveState> {
         'Disconnecting previous TikTok client before reconnect for @$username',
       );
     }
-    previousClient?.disconnect();
+    _disconnectClientSafely(previousClient, 'before reconnect');
     _manualStopRequested = false;
 
     final client = TikTokLiveClient(username);
@@ -324,9 +326,23 @@ class LiveNotifier extends Notifier<LiveState> {
       final data = evt.data;
       if (data == null) return;
 
-      final nickname = data['user']?['nickname']?.toString() ??
-          data['user']?['uniqueId']?.toString() ??
-          '?';
+      final userData = data['user'];
+      final userMap = userData is Map ? userData : const <String, Object?>{};
+      final uniqueId = userMap['uniqueId']?.toString();
+      final nickname = userMap['nickname']?.toString() ?? uniqueId ?? '?';
+      final userId =
+          userMap['userId']?.toString() ?? userMap['id']?.toString();
+      final userKeyCandidate = _resolveGiftUserKeyCandidate(
+        userId: userId,
+        uniqueId: uniqueId,
+        nickname: userMap['nickname']?.toString(),
+      );
+      AppLogger.info(
+        'Gift user key candidate: source=${userKeyCandidate.source} '
+        'key=${_redactUserKeyForLog(userKeyCandidate.value)} '
+        'uniqueIdPresent=${_hasText(uniqueId)} '
+        'nicknamePresent=${_hasText(userMap['nickname']?.toString())}',
+      );
       final giftMap = data['gift'] as Map<String, dynamic>? ?? {};
       final giftName = giftMap['name']?.toString() ?? 'ギフト';
       final repeatCount = _toPositiveInt(data['repeatCount']);
@@ -405,6 +421,7 @@ class LiveNotifier extends Notifier<LiveState> {
       clearError: true,
     );
     _startDiagnosticHeartbeat();
+    _playConnectionSuccessCue();
     AppLogger.info(
       elapsedMs == null
           ? 'TikTok live natively connected for @$_username'
@@ -601,6 +618,40 @@ class LiveNotifier extends Notifier<LiveState> {
     );
   }
 
+  ({String source, String? value}) _resolveGiftUserKeyCandidate({
+    required String? userId,
+    required String? uniqueId,
+    required String? nickname,
+  }) {
+    if (_hasText(userId)) {
+      return (source: 'userId', value: userId!.trim());
+    }
+    if (_hasText(uniqueId)) {
+      return (source: 'uniqueId', value: uniqueId!.trim());
+    }
+    if (_hasText(nickname)) {
+      return (source: 'nickname', value: nickname!.trim());
+    }
+    return (source: 'none', value: null);
+  }
+
+  bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
+
+  String _redactUserKeyForLog(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'none';
+    }
+    if (trimmed.length <= 2) {
+      return '*(${trimmed.length})';
+    }
+    if (trimmed.length <= 4) {
+      return '${trimmed[0]}***(${trimmed.length})';
+    }
+    return '${trimmed.substring(0, 2)}***'
+        '${trimmed.substring(trimmed.length - 2)}(${trimmed.length})';
+  }
+
   Future<void> _playGiftVibration(int value) async {
     try {
       final feedback = value >= _highGiftVibrationThreshold
@@ -608,7 +659,7 @@ class LiveNotifier extends Notifier<LiveState> {
           : value >= _mediumGiftVibrationThreshold
               ? 'medium'
               : 'light';
-      AppLogger.info('Gift vibration triggered: $feedback value=$value');
+      AppLogger.info('Gift vibration triggered: $feedback+vibrate value=$value');
       if (value >= _highGiftVibrationThreshold) {
         await HapticFeedback.heavyImpact();
       } else if (value >= _mediumGiftVibrationThreshold) {
@@ -618,7 +669,8 @@ class LiveNotifier extends Notifier<LiveState> {
         // medium feedback while still respecting the ON/OFF setting.
         await HapticFeedback.mediumImpact();
       }
-      AppLogger.info('Gift vibration completed: $feedback value=$value');
+      await HapticFeedback.vibrate();
+      AppLogger.info('Gift vibration completed: $feedback+vibrate value=$value');
     } catch (error, stackTrace) {
       AppLogger.warning(
         'Gift vibration failed: error=$error',
@@ -682,7 +734,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _resetGiftComboState();
     final previousClient = _client;
     _client = null;
-    previousClient?.disconnect();
+    _disconnectClientSafely(previousClient, 'dispose');
     await ttsService.setConnectionActive(active: false);
   }
 
@@ -745,6 +797,7 @@ class LiveNotifier extends Notifier<LiveState> {
       errorMessage: '$reason。再接続の上限に達しました '
           '($_maxAutoReconnectAttempts回)',
     );
+    _playConnectionFailureCue();
   }
 
   Duration _reconnectDelayForAttempt(int attempt) {
@@ -808,15 +861,7 @@ class LiveNotifier extends Notifier<LiveState> {
       _resetGiftComboState();
       final timedOutClient = _client;
       _client = null;
-      try {
-        timedOutClient?.disconnect();
-      } catch (error, stackTrace) {
-        AppLogger.warning(
-          'Error during timeout disconnect',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
+      _disconnectClientSafely(timedOutClient, 'timeout');
 
       if (shouldContinueReconnect) {
         _scheduleReconnect('接続できませんでした');
@@ -826,6 +871,7 @@ class LiveNotifier extends Notifier<LiveState> {
       _resetReconnectState();
       unawaited(ttsService.setConnectionActive(active: false));
       ref.read(mainProvider.notifier).stopLive();
+      _playConnectionFailureCue();
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
@@ -849,6 +895,29 @@ class LiveNotifier extends Notifier<LiveState> {
   void _cancelConnectTimeoutTimer() {
     _connectTimeoutTimer?.cancel();
     _connectTimeoutTimer = null;
+  }
+
+  void _disconnectClientSafely(TikTokLiveClient? client, String reason) {
+    if (client == null) {
+      return;
+    }
+    try {
+      client.disconnect();
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'TikTok client disconnect failed: $reason',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _playConnectionSuccessCue() {
+    unawaited(effectSoundService.playConnectionSuccess());
+  }
+
+  void _playConnectionFailureCue() {
+    unawaited(effectSoundService.playConnectionFailure());
   }
 
   void _startDiagnosticHeartbeat() {
@@ -916,6 +985,45 @@ class LiveNotifier extends Notifier<LiveState> {
     );
     final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
     return withoutAt.split('/').first.replaceAll('@', '').trim();
+  }
+
+  String? _usernameInputError(String rawInput, String normalizedUsername) {
+    if (_isNonTikTokUrl(rawInput)) {
+      return 'TikTokの配信URL、または配信ページの@IDを入力してください。';
+    }
+    if (normalizedUsername.isEmpty) {
+      return '配信IDを入力してください。@付き、@なし、TikTok URLが使えます。';
+    }
+    if (!_isLikelyTikTokUsername(normalizedUsername)) {
+      return '表示名ではなく、半角のTikTok IDまたはURLを入力してください。';
+    }
+    return null;
+  }
+
+  bool _isLikelyTikTokUsername(String username) {
+    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(username);
+  }
+
+  bool _isNonTikTokUrl(String input) {
+    final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+
+    final withScheme = RegExp(r'^[a-z][a-z0-9+.-]*://', caseSensitive: false)
+        .hasMatch(trimmed);
+    final hostLikeWithoutScheme =
+        RegExp(r'^(www\.|[a-z0-9.-]+\.[a-z]{2,}/)', caseSensitive: false)
+            .hasMatch(trimmed);
+    if (!withScheme && !hostLikeWithoutScheme) {
+      return false;
+    }
+
+    final uri = Uri.tryParse(withScheme ? trimmed : 'https://$trimmed');
+    final host = uri?.host.toLowerCase() ?? '';
+    return host.isNotEmpty &&
+        host != 'tiktok.com' &&
+        !host.endsWith('.tiktok.com');
   }
 
   int _toInt(Object? value) {

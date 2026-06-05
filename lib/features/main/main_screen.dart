@@ -71,7 +71,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   Future<void> _saveUsernameIfNeeded(String rawUsername) async {
     final normalized = _normalizeUsername(rawUsername);
-    if (normalized.isEmpty) {
+    if (normalized.isEmpty || !_isLikelyTikTokUsername(normalized)) {
       return;
     }
 
@@ -144,7 +144,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final result = <String>[];
     for (final rawUsername in rawUsernames) {
       final normalized = _normalizeUsername(rawUsername ?? '');
-      if (normalized.isEmpty) {
+      if (normalized.isEmpty || !_isLikelyTikTokUsername(normalized)) {
         continue;
       }
       final key = normalized.toLowerCase();
@@ -190,6 +190,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
     final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
     return withoutAt.split('/').first.replaceAll('@', '').trim();
+  }
+
+  bool _isLikelyTikTokUsername(String username) {
+    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(username);
   }
 
   String _voiceKey(Map<String, String>? voice) {
@@ -363,7 +367,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                 decoration: InputDecoration(
                                   labelText: '配信ID / TikTok URL',
                                   hintText: '例: @jppachi または jppachi',
-                                  helperText: '表示名ではなく配信ページの @ID を入力。URLも使えます',
+                                  helperText:
+                                      '表示名ではなく配信ページの @ID を入力。半角ID / URLが使えます',
                                   helperMaxLines: 2,
                                   labelStyle: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.75),

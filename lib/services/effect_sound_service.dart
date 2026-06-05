@@ -19,7 +19,6 @@ class EffectSoundService {
   static const int _highGiftValueThreshold = 100;
   static const int _mediumGiftSoundThreshold = 10;
   static const int _largeGiftSoundThreshold = 100;
-  static const int _ultraRareGiftSoundThreshold = 1000;
 
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
@@ -38,6 +37,14 @@ class EffectSoundService {
 
   @visibleForTesting
   static Uint8List debugBuildGiftWav() => _buildSmallCrystal().bytes;
+
+  @visibleForTesting
+  static Uint8List debugBuildConnectionSuccessWav() =>
+      _buildConnectionSuccessTone().bytes;
+
+  @visibleForTesting
+  static Uint8List debugBuildConnectionFailureWav() =>
+      _buildConnectionFailureTone().bytes;
 
   @visibleForTesting
   static String debugGiftSoundTierName(int value) =>
@@ -72,6 +79,8 @@ class EffectSoundService {
             ).build();
 
       _tones['comment'] = _buildCommentTone();
+      _tones['connection_success'] = _buildConnectionSuccessTone();
+      _tones['connection_failure'] = _buildConnectionFailureTone();
       _tones['small_0'] = _buildSmallCrystal();
       _tones['small_1'] = _buildSmallBubble();
       _tones['small_2'] = _buildSmallCoin();
@@ -136,6 +145,14 @@ class EffectSoundService {
     await _playTone('comment');
   }
 
+  Future<void> playConnectionSuccess() async {
+    await _playTone('connection_success');
+  }
+
+  Future<void> playConnectionFailure() async {
+    await _playTone('connection_failure');
+  }
+
   Future<void> playGiftEvent({
     required int value,
     required int comboStreak,
@@ -161,20 +178,14 @@ class EffectSoundService {
       return;
     }
 
-    if (giftTier == _GiftSoundTier.ultraRare) {
-      AppLogger.info('selected gift tone tier: ultraRare comboTier=$comboTier');
-      await _playUltraRareGift(randomVal, comboTier);
-      return;
-    }
-
-    if (giftTier == _GiftSoundTier.large) {
-      AppLogger.info('selected gift tone tier: large comboTier=$comboTier');
+    if (giftTier == _GiftSoundTier.gold) {
+      AppLogger.info('selected gift tone tier: gold comboTier=$comboTier');
       await _playHighGiftCombo(randomVal, comboTier);
       return;
     }
 
-    if (giftTier == _GiftSoundTier.medium) {
-      AppLogger.info('selected gift tone tier: medium comboTier=$comboTier');
+    if (giftTier == _GiftSoundTier.silver) {
+      AppLogger.info('selected gift tone tier: silver comboTier=$comboTier');
       await _playMediumGiftCombo(randomVal, comboTier);
       return;
     }
@@ -185,7 +196,7 @@ class EffectSoundService {
       return;
     }
 
-    AppLogger.info('selected gift tone tier: small comboTier=$comboTier');
+    AppLogger.info('selected gift tone tier: bronze comboTier=$comboTier');
     await _playSmallGift(randomVal, comboTier);
   }
 
@@ -195,10 +206,9 @@ class EffectSoundService {
 
   static _GiftSoundTier _giftSoundTierForValue(int value) {
     if (value <= 0) return _GiftSoundTier.fallback;
-    if (value < _mediumGiftSoundThreshold) return _GiftSoundTier.small;
-    if (value < _largeGiftSoundThreshold) return _GiftSoundTier.medium;
-    if (value < _ultraRareGiftSoundThreshold) return _GiftSoundTier.large;
-    return _GiftSoundTier.ultraRare;
+    if (value < _mediumGiftSoundThreshold) return _GiftSoundTier.bronze;
+    if (value < _largeGiftSoundThreshold) return _GiftSoundTier.silver;
+    return _GiftSoundTier.gold;
   }
 
   static bool _isHeartMeGift(String? giftName) {
@@ -526,22 +536,6 @@ class EffectSoundService {
     }
   }
 
-  Future<void> _playUltraRareGift(double randomVal, int comboTier) async {
-    await _playTone('rare_large');
-    _playToneAfter(
-      const Duration(milliseconds: 92),
-      comboTier >= 2 ? 'large_combo_10' : 'large',
-      volumeScale: 0.78,
-    );
-    if (randomVal < 0.08) {
-      _playToneAfter(
-        const Duration(milliseconds: 170),
-        'medium_combo_10',
-        volumeScale: 0.58,
-      );
-    }
-  }
-
   void _playToneAfter(
     Duration delay,
     String toneName, {
@@ -560,29 +554,38 @@ class EffectSoundService {
   double _resolvedVolumeForTone(String toneName) {
     final categoryScale = toneName == 'comment'
         ? 0.68
-        : toneName == 'rare_small'
-            ? 0.82
-            : toneName == 'rare_medium' || toneName.startsWith('medium')
-                ? 0.90
-                : toneName == 'rare_large' || toneName.startsWith('large')
-                    ? 0.94
-                    : toneName.startsWith('small')
-                        ? 0.84
-                        : 1.0;
+        : toneName == 'connection_success'
+            ? 0.74
+            : toneName == 'connection_failure'
+                ? 0.66
+                : toneName == 'rare_small'
+                    ? 0.82
+                    : toneName == 'rare_medium' || toneName.startsWith('medium')
+                        ? 0.90
+                        : toneName == 'rare_large' ||
+                                toneName.startsWith('large')
+                            ? 0.94
+                            : toneName.startsWith('small')
+                                ? 0.84
+                                : 1.0;
 
     final ttsDuckScale = !ttsService.isPlaying
         ? 1.0
         : toneName == 'comment'
             ? 0.50
-            : toneName == 'rare_small'
-                ? 0.66
-                : toneName == 'rare_medium' || toneName.startsWith('medium')
-                    ? 0.78
-                    : toneName == 'rare_large' || toneName.startsWith('large')
-                        ? 0.84
-                        : toneName.startsWith('small')
-                            ? 0.68
-                            : 0.85;
+            : toneName == 'connection_success' ||
+                    toneName == 'connection_failure'
+                ? 0.70
+                : toneName == 'rare_small'
+                    ? 0.66
+                    : toneName == 'rare_medium' || toneName.startsWith('medium')
+                        ? 0.78
+                        : toneName == 'rare_large' ||
+                                toneName.startsWith('large')
+                            ? 0.84
+                            : toneName.startsWith('small')
+                                ? 0.68
+                                : 0.85;
 
     return (_volume * categoryScale * ttsDuckScale).clamp(0.0, 1.0);
   }
@@ -620,6 +623,32 @@ class EffectSoundService {
       0.001,
       0.008,
       0.06,
+    );
+  }
+
+  static _GeneratedEffectTone _buildConnectionSuccessTone() {
+    return _generateTone(
+      const [
+        _ToneNote(880, 0.026, 0.24),
+        _ToneNote(1320, 0.052, 0.32),
+      ],
+      0.001,
+      0.018,
+      0.10,
+      interNoteGap: 0.004,
+    );
+  }
+
+  static _GeneratedEffectTone _buildConnectionFailureTone() {
+    return _generateTone(
+      const [
+        _ToneNote(520, 0.034, 0.26),
+        _ToneNote(360, 0.056, 0.30),
+      ],
+      0.001,
+      0.020,
+      0.06,
+      interNoteGap: 0.004,
     );
   }
 
@@ -1041,8 +1070,7 @@ final effectSoundService = EffectSoundService.instance;
 
 enum _GiftSoundTier {
   fallback,
-  small,
-  medium,
-  large,
-  ultraRare,
+  bronze,
+  silver,
+  gold,
 }

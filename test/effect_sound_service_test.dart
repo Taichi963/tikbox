@@ -21,19 +21,31 @@ void main() {
 
       expect(gift.length, greaterThan(comment.length));
     });
+
+    test('connection cues produce distinct WAV payloads', () {
+      final success = EffectSoundService.debugBuildConnectionSuccessWav();
+      final failure = EffectSoundService.debugBuildConnectionFailureWav();
+
+      expect(_ascii(success, 0, 4), 'RIFF');
+      expect(_ascii(failure, 0, 4), 'RIFF');
+      expect(_dataLength(success), greaterThan(0));
+      expect(_dataLength(failure), greaterThan(0));
+      expect(success.length, isNot(failure.length));
+    });
   });
 
   group('EffectSoundService gift tiers', () {
     test('classifies boundary values safely', () {
       expect(EffectSoundService.debugGiftSoundTierName(-1), 'fallback');
       expect(EffectSoundService.debugGiftSoundTierName(0), 'fallback');
-      expect(EffectSoundService.debugGiftSoundTierName(1), 'small');
-      expect(EffectSoundService.debugGiftSoundTierName(9), 'small');
-      expect(EffectSoundService.debugGiftSoundTierName(10), 'medium');
-      expect(EffectSoundService.debugGiftSoundTierName(99), 'medium');
-      expect(EffectSoundService.debugGiftSoundTierName(100), 'large');
-      expect(EffectSoundService.debugGiftSoundTierName(999), 'large');
-      expect(EffectSoundService.debugGiftSoundTierName(1000), 'ultraRare');
+      expect(EffectSoundService.debugGiftSoundTierName(1), 'bronze');
+      expect(EffectSoundService.debugGiftSoundTierName(9), 'bronze');
+      expect(EffectSoundService.debugGiftSoundTierName(10), 'silver');
+      expect(EffectSoundService.debugGiftSoundTierName(99), 'silver');
+      expect(EffectSoundService.debugGiftSoundTierName(100), 'gold');
+      expect(EffectSoundService.debugGiftSoundTierName(999), 'gold');
+      expect(EffectSoundService.debugGiftSoundTierName(1000), 'gold');
+      expect(EffectSoundService.debugGiftSoundTierName(10000), 'gold');
     });
 
     test('detects Heart Me gift names safely', () {

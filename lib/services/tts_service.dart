@@ -363,9 +363,17 @@ class TtsService {
     _playbackGeneration += 1;
     _isPlaying = false;
 
-    await _handler?.stopCurrent();
-
-    _isSkipping = false;
+    try {
+      await _handler?.stopCurrent();
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'TTS skip stopCurrent failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      _isSkipping = false;
+    }
 
     await _playNext();
   }
@@ -384,7 +392,15 @@ class TtsService {
       return;
     }
 
-    await _handler?.stopCurrent();
+    try {
+      await _handler?.stopCurrent();
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'TTS stopAll stopCurrent failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> _playNext() async {
