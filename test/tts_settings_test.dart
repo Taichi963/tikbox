@@ -3,6 +3,13 @@ import 'package:tikbox/models/tts_settings.dart';
 
 void main() {
   group('TtsSettings', () {
+    test('defaults gift vibration to enabled', () {
+      const settings = TtsSettings();
+
+      expect(settings.giftVibrationEnabled, isTrue);
+      expect(TtsSettings.fromJson({}).giftVibrationEnabled, isTrue);
+    });
+
     test('restores persisted values within safe ranges', () {
       final settings = TtsSettings.fromJson({
         'rate': 5.0,

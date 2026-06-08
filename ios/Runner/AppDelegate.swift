@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import AVFoundation
+import AudioToolbox
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -29,7 +30,43 @@ import AVFoundation
     }
 
     GeneratedPluginRegistrant.register(with: self)
+    configureGiftVibrationChannel()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func configureGiftVibrationChannel() {
+    guard let controller = window?.rootViewController as? FlutterViewController else {
+      NSLog("LiveVoice Box gift vibration channel setup skipped: no FlutterViewController")
+      return
+    }
+
+    let channel = FlutterMethodChannel(
+      name: "com.taichi963.tikbox/gift_vibration",
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "vibrateGift" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      let arguments = call.arguments as? [String: Any]
+      let value = arguments?["value"] as? Int ?? 0
+      DispatchQueue.main.async {
+        self?.playGiftVibration(value: value)
+        result(true)
+      }
+    }
+  }
+
+  private func playGiftVibration(value: Int) {
+    if #available(iOS 10.0, *) {
+      let style: UIImpactFeedbackGenerator.FeedbackStyle = value >= 100 ? .heavy : .medium
+      let generator = UIImpactFeedbackGenerator(style: style)
+      generator.prepare()
+      generator.impactOccurred()
+    }
+    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
   }
 
   @objc private func handleAudioSessionInterruption(_ notification: Notification) {

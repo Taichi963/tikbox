@@ -53,6 +53,8 @@ class LiveNotifier extends Notifier<LiveState> {
   static const int _maxReconnectDelaySeconds = 16;
   static const int _mediumGiftVibrationThreshold = 10;
   static const int _highGiftVibrationThreshold = 100;
+  static const MethodChannel _giftVibrationChannel =
+      MethodChannel('com.taichi963.tikbox/gift_vibration');
   static const Duration _resumeReconnectRetryAfter = Duration(seconds: 30);
   static const Duration _diagnosticHeartbeatInterval = Duration(seconds: 30);
   static const Duration _connectSlowLogThreshold = Duration(seconds: 20);
@@ -128,7 +130,7 @@ class LiveNotifier extends Notifier<LiveState> {
       state = state.copyWith(
         wsStatus: WsStatus.error,
         isConnecting: false,
-        errorMessage: '再接続するユーザー名がありません',
+        errorMessage: '再接続できません。配信者の@IDまたはURLをもう一度入力してください。',
       );
       return;
     }
@@ -305,7 +307,9 @@ class LiveNotifier extends Notifier<LiveState> {
       _cancelConnectAttemptTimers();
       AppLogger.error(
           'TikTok client error event for @$username data=${evt.data}');
-      _handleStatusError(evt.data?['error']?.toString() ?? '不明なエラーが発生しました');
+      _handleStatusError(
+        evt.data?['error']?.toString() ?? '接続できませんでした。ID・配信中か・通信環境を確認してください。',
+      );
     });
 
     client.on(EventType.chat, (evt) {
@@ -330,8 +334,7 @@ class LiveNotifier extends Notifier<LiveState> {
       final userMap = userData is Map ? userData : const <String, Object?>{};
       final uniqueId = userMap['uniqueId']?.toString();
       final nickname = userMap['nickname']?.toString() ?? uniqueId ?? '?';
-      final userId =
-          userMap['userId']?.toString() ?? userMap['id']?.toString();
+      final userId = userMap['userId']?.toString() ?? userMap['id']?.toString();
       final userKeyCandidate = _resolveGiftUserKeyCandidate(
         userId: userId,
         uniqueId: uniqueId,
@@ -391,7 +394,7 @@ class LiveNotifier extends Notifier<LiveState> {
           error: error,
           stackTrace: stackTrace,
         );
-        _handleStatusError('ライブが見つからないか、接続に失敗しました');
+        _handleStatusError('接続できませんでした。IDが正しいか、配信中か確認してください。');
       }),
     );
   }
@@ -455,7 +458,7 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
-      errorMessage: '接続が切れました。再接続を待機しています',
+      errorMessage: '接続が切れました。自動で再接続します。',
     );
     _scheduleReconnect('接続が切れました');
   }
@@ -476,7 +479,7 @@ class LiveNotifier extends Notifier<LiveState> {
       wsStatus: WsStatus.connecting,
       isConnecting: true,
       reconnectAttempts: trackedAttempt,
-      errorMessage: '再接続中... ($trackedAttempt/$_maxAutoReconnectAttempts)',
+      errorMessage: '再接続しています。しばらくお待ちください。',
     );
   }
 
@@ -603,12 +606,12 @@ class LiveNotifier extends Notifier<LiveState> {
 
     final settings = ref.read(ttsSettingsProvider);
     AppLogger.info(
-      'Gift vibration setting: ${settings.giftVibrationEnabled}',
+      'Gift vibration setting: enabled=${settings.giftVibrationEnabled}',
     );
     if (settings.giftVibrationEnabled) {
       unawaited(_playGiftVibration(totalValue ?? 1));
     } else {
-      AppLogger.info('Gift vibration skipped because setting is OFF');
+      AppLogger.info('Gift vibration skipped: setting is OFF');
     }
     final preferredGiftVoice = settings.giftVoice ?? settings.commentVoice;
     _enqueueGiftTts(
@@ -659,18 +662,17 @@ class LiveNotifier extends Notifier<LiveState> {
           : value >= _mediumGiftVibrationThreshold
               ? 'medium'
               : 'light';
-      AppLogger.info('Gift vibration triggered: $feedback+vibrate value=$value');
-      if (value >= _highGiftVibrationThreshold) {
-        await HapticFeedback.heavyImpact();
-      } else if (value >= _mediumGiftVibrationThreshold) {
-        await HapticFeedback.mediumImpact();
-      } else {
-        // lightImpact is easy to miss on real devices, so gifts use at least
-        // medium feedback while still respecting the ON/OFF setting.
-        await HapticFeedback.mediumImpact();
+      AppLogger.info('Gift vibration triggered: $feedback value=$value');
+      final nativeVibrationTriggered =
+          await _tryNativeGiftVibration(value, feedback);
+      if (!nativeVibrationTriggered) {
+        await _playFlutterGiftHaptic(value);
       }
-      await HapticFeedback.vibrate();
-      AppLogger.info('Gift vibration completed: $feedback+vibrate value=$value');
+      AppLogger.info(
+        'Gift vibration completed: $feedback '
+        'method=${nativeVibrationTriggered ? 'native' : 'flutter'} '
+        'value=$value',
+      );
     } catch (error, stackTrace) {
       AppLogger.warning(
         'Gift vibration failed: error=$error',
@@ -678,6 +680,48 @@ class LiveNotifier extends Notifier<LiveState> {
         stackTrace: stackTrace,
       );
     }
+  }
+
+  Future<bool> _tryNativeGiftVibration(int value, String feedback) async {
+    try {
+      final triggered = await _giftVibrationChannel.invokeMethod<bool>(
+        'vibrateGift',
+        <String, Object>{
+          'value': value,
+          'feedback': feedback,
+        },
+      );
+      if (triggered == true) {
+        return true;
+      }
+      AppLogger.info('Native gift vibration unavailable; using Flutter haptic');
+      return false;
+    } on MissingPluginException {
+      AppLogger.info(
+        'Native gift vibration plugin missing; using Flutter haptic',
+      );
+      return false;
+    } on PlatformException catch (error, stackTrace) {
+      AppLogger.warning(
+        'Native gift vibration failed; using Flutter haptic',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  Future<void> _playFlutterGiftHaptic(int value) async {
+    if (value >= _highGiftVibrationThreshold) {
+      await HapticFeedback.heavyImpact();
+    } else if (value >= _mediumGiftVibrationThreshold) {
+      await HapticFeedback.mediumImpact();
+    } else {
+      // lightImpact is easy to miss on real devices, so gifts use at least
+      // medium feedback while still respecting the ON/OFF setting.
+      await HapticFeedback.mediumImpact();
+    }
+    await HapticFeedback.vibrate();
   }
 
   void _enqueueCommentTts(
@@ -794,8 +838,7 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.error,
       isConnecting: false,
-      errorMessage: '$reason。再接続の上限に達しました '
-          '($_maxAutoReconnectAttempts回)',
+      errorMessage: '何度か試しましたが接続できませんでした。ID・配信中か・通信環境を確認してください。',
     );
     _playConnectionFailureCue();
   }
