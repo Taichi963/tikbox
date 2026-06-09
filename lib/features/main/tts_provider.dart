@@ -14,14 +14,15 @@ const String _giftSoundEnabledKey = 'tikbox_gift_sound_enabled_v1';
 class TtsSettingsNotifier extends Notifier<TtsSettings> {
   Future<void>? _loadFuture;
   SharedPreferences? _prefs;
-  bool _giftSoundEnabled = true;
+  bool _giftSoundEnabled = false;
 
   bool get giftSoundEnabled => _giftSoundEnabled;
 
   @override
   TtsSettings build() {
+    effectSoundService.setGiftSoundEnabled(false);
     _loadFuture ??= _load();
-    return const TtsSettings();
+    return const TtsSettings(giftVibrationEnabled: false);
   }
 
   Future<void> _ensureLoaded() async {
@@ -49,6 +50,11 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
       }
     }
 
+    // Restore feedback settings before slower voice discovery completes.
+    state = settings;
+    effectSoundService.setVolume(settings.effectVolume);
+    effectSoundService.setGiftSoundEnabled(_giftSoundEnabled);
+
     final voices = await ttsService.getAvailableVoices();
     final availableVoiceKeys = voices.map(_voiceKey).toSet();
     settings = settings.copyWith(
@@ -65,8 +71,6 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     await _prefs?.setString(_ttsSettingsKey, jsonEncode(settings.toJson()));
 
     state = settings;
-    effectSoundService.setVolume(settings.effectVolume);
-    effectSoundService.setGiftSoundEnabled(_giftSoundEnabled);
     await ttsService.applySettings(settings);
   }
 

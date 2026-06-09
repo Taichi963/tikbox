@@ -312,6 +312,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       .clamp(140.0, controlPanelUpperBound)
                       .toDouble();
                   final sectionGap = isKeyboardVisible ? 8.0 : 16.0;
+                  final connectingNotice = liveState.isConnecting
+                      ? liveState.errorMessage
+                      : null;
                   final content = Column(
                     children: [
                       Padding(
@@ -424,9 +427,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                   ),
                                   if (liveState.isConnecting) ...[
                                     const SizedBox(height: 16),
-                                    const _ConnectingHintCard(),
+                                    _ConnectingHintCard(
+                                      message: connectingNotice,
+                                    ),
                                   ],
-                                  if (liveState.errorMessage != null) ...[
+                                  if (!liveState.isConnecting &&
+                                      liveState.errorMessage != null) ...[
                                     const SizedBox(height: 14),
                                     _ErrorActionCard(
                                       message: liveState.errorMessage!,
@@ -1220,7 +1226,9 @@ class _StatusChip extends StatelessWidget {
 }
 
 class _ConnectingHintCard extends StatelessWidget {
-  const _ConnectingHintCard();
+  final String? message;
+
+  const _ConnectingHintCard({this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -1286,7 +1294,8 @@ class _ConnectingHintCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
+                  message ??
+                      '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
                     fontSize: 11,
