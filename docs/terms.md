@@ -1,63 +1,143 @@
-# Terms of Use Notes - LiveVoice Box
+# Terms of Use - LiveVoice Box
 
-These terms are prepared for release documentation, but the final public text
-should be reviewed by the app owner before store submission.
+Last updated: June 14, 2026
 
-## Unofficial Tool
+Effective date: `[EFFECTIVE_DATE]`
+
+Developer/operator: `[OPERATOR_NAME]`
+
+Support contact: zeb0kui3ackwv4pft1us@gmail.com
+
+Terms URL: `[TERMS_URL]`
+
+Support URL: `[SUPPORT_URL]`
+
+Governing law and jurisdiction: `[GOVERNING_LAW]`
+
+The missing operator, effective-date, and governing-law information must be
+completed before these terms are submitted to an app store.
+
+[Privacy Policy](privacy.html) | [Terms of Use](terms.html) |
+[Support](support.html) |
+[GitHub Repository](https://github.com/Taichi963/tikbox)
+
+## 1. Unofficial Tool
 
 LiveVoice Box is an unofficial support tool for streamers. It is not affiliated
-with, endorsed by, or sponsored by TikTok, ByteDance, or any live-streaming
-platform.
+with, endorsed by, approved by, or sponsored by TikTok, ByteDance, or any other
+live-streaming platform.
 
-## Intended Use
+TikTok, ByteDance, and other names and trademarks belong to their respective
+owners. LiveVoice Box does not claim ownership of those names or trademarks.
 
-Users should use LiveVoice Box only for their own live stream or for streams
-they are authorized to support. Users are responsible for complying with the
-rules and terms of the services they stream on.
+## 2. Intended And Authorized Use
 
-## No Connection Guarantee
+Users should use LiveVoice Box only for their own live stream or for a stream
+they are authorized to support. Users are responsible for complying with
+applicable laws and the rules and terms of the live-streaming service they use.
 
-Live connection availability is not guaranteed. Connection may fail or stop due
-to service changes, live availability, network state, device state, operating
-system background restrictions, or other factors outside the app's control.
+## 3. Service Availability
 
-## No Login Or Cookie Collection
+Live connection, comment delivery, gift-event delivery, background operation,
+audio routing, vibration, and text-to-speech availability are not guaranteed.
+Features may be unavailable, delayed, interrupted, or changed because of:
 
-The app must not ask for passwords, collect cookies, extract browser cookies, or
-use WebView login to obtain account information.
+- whether the selected public LIVE is currently active
+- an incorrect stream ID
+- network or device conditions
+- operating-system background restrictions
+- text-to-speech engine availability
+- changes to the live-streaming service or third-party libraries
 
-## Data Use
+## 4. Login Credentials And Service Cookie
 
-The app uses the entered stream ID, live comments, and gift events only for live
-reading, short sound feedback, vibration feedback, local settings, and username
-history. Settings and username history are stored locally on the device unless a
-future release explicitly updates the privacy policy and store disclosures.
+LiveVoice Box does not ask for passwords, read existing browser or TikTok app
+cookies, or use a WebView login to obtain account information. Users must not
+attempt to use the app to collect or extract another person's credentials,
+cookies, or session information.
 
-## Prohibited Use
+The bundled LIVE connection library receives a service-issued `ttwid` cookie
+through an unauthenticated request and uses it for the public LIVE connection.
+It is not a user login credential and is not stored by LiveVoice Box in
+SharedPreferences or an app database.
 
-Users should not use the app to:
+## 5. Data And Privacy
+
+The app uses the entered stream ID, public live comments, public user display
+names, and public gift events for connection, display, reading, sound,
+vibration, and diagnostic purposes. Settings and saved stream IDs are stored
+locally on the device.
+
+Details are provided in the Privacy Policy. The public privacy-policy URL is
+`[PRIVACY_URL]`. This placeholder must be replaced with a public URL and linked
+from the app before store submission.
+
+## 6. Prohibited Use
+
+Users must not use the app to:
 
 - imply that LiveVoice Box is an official app or official platform integration
+- use the app for a stream they are not authorized to support
 - collect login credentials, passwords, cookies, or browser session data
-- monitor viewers in a way that violates platform rules or privacy expectations
-- use the app for streams they are not authorized to support
-- bypass restrictions or technical protections of any live-streaming platform
+- bypass access restrictions or technical protections
+- violate privacy, intellectual-property, or other legal rights
+- interfere with a live-streaming platform, its users, or its normal operation
 
-## Background Audio And Notifications
+## 7. Background Audio And Notifications
 
-Background audio and Android foreground service notifications are used to keep
-user-started comment reading and short sound feedback available during an active
-live reading session. They should not be described as silent background
-keep-alive features.
+Background audio is used to continue user-started comment reading and short
+sound feedback during an active live-reading session. On Android, a foreground
+service notification is used to make this background audio activity visible to
+the user. These features are not intended for hidden monitoring or silent
+background data collection.
 
-## Disclaimer
+## 8. User Responsibility
 
-LiveVoice Box is provided as a streamer support tool. The app owner should make
-reasonable efforts to keep the app stable, but service availability, live
-connection behavior, background execution, audio routing, and device-specific
-behavior may vary.
+Users are responsible for:
 
-## Pre-Release Review
+- entering the correct public stream ID
+- confirming that the stream is active and that they are authorized to use the
+  app with that stream
+- selecting appropriate device, notification, audio, and vibration settings
+- stopping the live-reading session when it is no longer needed
+- using the comment filtering, blocking, and report-preparation tools
+  appropriately
 
-Before public release, confirm that the store listing, privacy policy, and these
-terms are consistent with the current app behavior and store disclosure forms.
+The app includes fixed and user-added blocked-word filtering, local user
+blocking, and a report-preparation screen. These tools reduce unwanted display
+and reading but cannot guarantee that every objectionable comment is detected.
+The report screen copies the support email, subject, and report body for the
+user. The user sends the report from their email app; the app does not
+automatically transmit it. Reports received at the published support email are
+reviewed by the operator. The report body does not include cookies, `ttwid`,
+device IDs, complete internal logs, login credentials, or authentication
+information.
+
+## 9. Disclaimer And Limitation
+
+LiveVoice Box is provided as a streamer support tool. The developer should make
+reasonable efforts to maintain the app, but does not guarantee uninterrupted
+operation, connection availability, compatibility with future service changes,
+or identical behavior across devices.
+
+Any limitation of liability must remain subject to rights and obligations that
+cannot be excluded under applicable law. The final legal limitation and
+governing-law terms must be reviewed together with `[GOVERNING_LAW]` before
+publication.
+
+## 10. Suspension, Termination, And Support
+
+Users may stop using and uninstall the app at any time. Developer-side support,
+distribution suspension, and termination conditions are 未確認.
+
+## 11. Changes To These Terms
+
+These terms may be updated when app behavior, store requirements, or applicable
+rules change. Material updates should include a revised "Last updated" date.
+
+## 12. Contact
+
+Support, comment reports, and legal inquiries:
+zeb0kui3ackwv4pft1us@gmail.com
+
+For support instructions, see the [Support page](support.html).
