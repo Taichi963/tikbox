@@ -9,6 +9,7 @@ import '../../models/comment_model.dart';
 import '../../services/app_logger.dart';
 import '../../services/effect_sound_service.dart';
 import '../../services/tts_service.dart';
+import '../../services/ugc_moderation_service.dart';
 import '../main/main_provider.dart';
 import '../main/tts_provider.dart';
 
@@ -306,7 +307,7 @@ class LiveNotifier extends Notifier<LiveState> {
       if (_disposed || !identical(_client, client)) return;
       _cancelConnectAttemptTimers();
       AppLogger.error(
-          'TikTok client error event for @$username data=${evt.data}');
+        'TikTok client error event for @$username data=${evt.data}');
       _handleStatusError(
         evt.data?['error']?.toString() ?? '接続できませんでした。ID・配信中か・通信環境を確認してください。',
       );
@@ -317,12 +318,21 @@ class LiveNotifier extends Notifier<LiveState> {
       final data = evt.data;
       if (data == null) return;
 
-      final nickname = data['user']?['nickname']?.toString() ??
-          data['user']?['uniqueId']?.toString() ??
-          '?';
+      final userData = data['user'];
+      final userMap = userData is Map ? userData : const <String, Object?>{};
+      final uniqueId = userMap['uniqueId']?.toString();
+      final nickname = userMap['nickname']?.toString() ?? uniqueId ?? '?';
       final content = data['content']?.toString() ?? '';
+      final identity = UgcModerationService.resolveIdentity(
+        uniqueId: uniqueId,
+        nickname: nickname,
+      );
 
-      _handleCommentNative(nickname, content);
+      _handleCommentNative(
+        nickname,
+        content,
+        identity: identity,
+      );
     });
 
     client.on(EventType.gift, (evt) {
@@ -501,8 +511,26 @@ class LiveNotifier extends Notifier<LiveState> {
     _scheduleReconnect(message);
   }
 
-  void _handleCommentNative(String userName, String text) {
+  void _handleCommentNative(
+    String userName,
+    String text, {
+    required UgcUserIdentity identity,
+  }) {
     if (userName.isEmpty || text.isEmpty) return;
+
+    final mainNotifier = ref.read(mainProvider.notifier);
+    final moderationDecision = mainNotifier.moderationDecision(
+      userKey: identity.key,
+      userName: userName,
+      text: text,
+    );
+    if (moderationDecision != UgcModerationDecision.allow) {
+      AppLogger.info(
+        'Comment suppressed by UGC moderation: '
+        'reason=${moderationDecision.name} source=${identity.source}',
+      );
+      return;
+    }
 
     final comment = CommentModel(
       id: _uuid.v4(),
@@ -510,9 +538,12 @@ class LiveNotifier extends Notifier<LiveState> {
       text: text,
       type: CommentType.normal,
       createdAt: DateTime.now(),
+      userKey: identity.key,
+      userKeySource: identity.source,
+      userReference: identity.reference,
     );
 
-    ref.read(mainProvider.notifier).addComment(comment);
+    mainNotifier.addComment(comment);
     unawaited(effectSoundService.playComment());
 
     final settings = ref.read(ttsSettingsProvider);

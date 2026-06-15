@@ -11,6 +11,9 @@ class CommentModel {
   final String? giftName;
   final int? giftCount;
   final int giftValue;
+  final String? userKey;
+  final String? userKeySource;
+  final String? userReference;
   final DateTime createdAt;
 
   const CommentModel({
@@ -22,6 +25,9 @@ class CommentModel {
     this.giftName,
     this.giftCount,
     this.giftValue = 0,
+    this.userKey,
+    this.userKeySource,
+    this.userReference,
   });
 
   bool get isGift => type == CommentType.gift;

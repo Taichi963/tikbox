@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../models/comment_model.dart';
 import '../../models/tts_settings.dart';
 import '../../services/app_logger.dart';
 import '../../services/tts_service.dart';
+import '../../services/ugc_moderation_service.dart';
 import '../../widgets/comment_animation.dart';
 import '../../widgets/gift_animation.dart';
 import '../../widgets/neon_effect.dart';
@@ -18,6 +21,7 @@ const String _lastUsernameKey = 'tikbox_last_username_v1';
 const String _savedUsernamesKey = 'tikbox_saved_usernames_v1';
 const int _maxSavedUsernames = 5;
 const String _voicePreviewText = 'こんにちは。LiveVoice Boxの読み上げテストです。';
+const String _supportEmail = '[SUPPORT_EMAIL]';
 
 /// MVP: 接続・TTS・最小設定のコメント一覧のみ
 class MainScreen extends ConsumerStatefulWidget {
@@ -29,6 +33,7 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _blockedWordController = TextEditingController();
   List<String> _savedUsernames = const [];
 
   @override
@@ -40,6 +45,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void dispose() {
     _usernameController.dispose();
+    _blockedWordController.dispose();
     super.dispose();
   }
 
@@ -312,9 +318,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       .clamp(140.0, controlPanelUpperBound)
                       .toDouble();
                   final sectionGap = isKeyboardVisible ? 8.0 : 16.0;
-                  final connectingNotice = liveState.isConnecting
-                      ? liveState.errorMessage
-                      : null;
+                  final connectingNotice =
+                      liveState.isConnecting ? liveState.errorMessage : null;
                   final content = Column(
                     children: [
                       Padding(
@@ -555,6 +560,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             final current = ref.watch(ttsSettingsProvider);
             final notifier = ref.read(ttsSettingsProvider.notifier);
             final giftSoundEnabled = notifier.giftSoundEnabled;
+            final moderationReady = ref.watch(
+              mainProvider.select((state) => state.moderationReady),
+            );
+            final blockedUsers = ref.watch(
+              mainProvider.select((state) => state.blockedUsers),
+            );
+            final customBlockedTerms = ref.watch(
+              mainProvider.select((state) => state.customBlockedTerms),
+            );
+            final moderationNotifier = ref.read(mainProvider.notifier);
             final availableVoices = current.availableVoices;
             final availableVoiceKeys = availableVoices.map(_voiceKey).toSet();
             final pendingVoiceValue = pendingCommentVoiceKey.isNotEmpty &&
@@ -893,6 +908,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                         height: 1.35,
                                       ),
                                     ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _ModerationSettingsSection(
+                                    ready: moderationReady,
+                                    blockedUsers: blockedUsers,
+                                    customBlockedTerms: customBlockedTerms,
+                                    blockedWordController:
+                                        _blockedWordController,
+                                    notifier: moderationNotifier,
                                   ),
                                   const SizedBox(height: 4),
                                 ],
@@ -1294,8 +1318,7 @@ class _ConnectingHintCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  message ??
-                      '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
+                  message ?? '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
                     fontSize: 11,
@@ -1446,13 +1469,307 @@ class _LabeledSlider extends StatelessWidget {
   }
 }
 
+class _ModerationSettingsSection extends StatelessWidget {
+  final bool ready;
+  final List<BlockedUserEntry> blockedUsers;
+  final List<String> customBlockedTerms;
+  final TextEditingController blockedWordController;
+  final MainNotifier notifier;
+
+  const _ModerationSettingsSection({
+    required this.ready,
+    required this.blockedUsers,
+    required this.customBlockedTerms,
+    required this.blockedWordController,
+    required this.notifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Divider(color: Colors.white.withValues(alpha: 0.14)),
+        const SizedBox(height: 8),
+        const Text(
+          'コメント保護',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '固定NGワードに加えて、自分用のNGワードを追加できます。',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.66),
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: blockedWordController,
+                enabled: ready,
+                maxLength: 40,
+                decoration: const InputDecoration(
+                  labelText: '追加するNGワード',
+                  counterText: '',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: ready
+                  ? () async {
+                      final error = await notifier.addCustomBlockedTerm(
+                        blockedWordController.text,
+                      );
+                      if (!context.mounted) {
+                        return;
+                      }
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(error)),
+                        );
+                        return;
+                      }
+                      blockedWordController.clear();
+                    }
+                  : null,
+              child: const Text('追加'),
+            ),
+          ],
+        ),
+        if (!ready) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(),
+        ],
+        if (customBlockedTerms.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: customBlockedTerms.map((term) {
+              return InputChip(
+                label: Text(term),
+                onDeleted: () {
+                  unawaited(notifier.removeCustomBlockedTerm(term));
+                },
+              );
+            }).toList(growable: false),
+          ),
+        ],
+        const SizedBox(height: 14),
+        const Text(
+          'ブロック中のユーザー',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        if (blockedUsers.isEmpty)
+          Text(
+            'ブロック中のユーザーはいません。',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.58)),
+          )
+        else
+          ...blockedUsers.map(
+            (entry) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(
+                entry.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                entry.persistent ? 'IDでブロック（再起動後も有効）' : '表示名でブロック（この接続中のみ）',
+              ),
+              trailing: TextButton(
+                onPressed: () => notifier.unblockUser(entry.key),
+                child: const Text('解除'),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _CommentSection extends ConsumerWidget {
   const _CommentSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final comments = ref.watch(mainProvider.select((s) => s.comments));
-    return AnimatedCommentList(comments: comments);
+    return AnimatedCommentList(
+      comments: comments,
+      onBlockUser: (comment) {
+        unawaited(_confirmBlock(context, ref, comment));
+      },
+      onReportComment: (comment) {
+        unawaited(_showReportFlow(context, ref, comment));
+      },
+    );
+  }
+
+  Future<void> _confirmBlock(
+    BuildContext context,
+    WidgetRef ref,
+    CommentModel comment,
+  ) async {
+    final shouldBlock = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('このユーザーをブロックしますか？'),
+          content: Text(
+            '${comment.userName}さんの今後のコメントを表示・読み上げしません。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ブロック'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldBlock != true) {
+      return;
+    }
+    await ref.read(mainProvider.notifier).blockUser(comment);
+  }
+
+  Future<void> _showReportFlow(
+    BuildContext context,
+    WidgetRef ref,
+    CommentModel comment,
+  ) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return SimpleDialog(
+          title: const Text('通報理由を選択'),
+          children: [
+            for (final reason in const [
+              '嫌がらせ・誹謗中傷',
+              '差別的または暴力的な内容',
+              '性的または不適切な内容',
+              'その他',
+            ])
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(dialogContext).pop(reason),
+                child: Text(reason),
+              ),
+          ],
+        );
+      },
+    );
+    if (reason == null || !context.mounted) {
+      return;
+    }
+
+    final reference = comment.userReference ?? comment.userName;
+    final reportText = UgcModerationService.buildReportText(
+      supportEmail: _supportEmail,
+      reason: reason,
+      displayName: comment.userName,
+      userKeySource: comment.userKeySource ?? 'nickname',
+      userReference: reference,
+      commentText: comment.text,
+      receivedAt: comment.createdAt,
+    );
+    final supportEmailConfigured =
+        !_supportEmail.startsWith('[') && _supportEmail.contains('@');
+
+    final copied = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('通報内容を確認'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    supportEmailConfigured
+                        ? '宛先・件名・本文をコピーし、メールアプリへ貼り付けて送信してください。'
+                        : '宛先はプレースホルダーです。実在するサポートメールを公開前に設定してください。',
+                  ),
+                  const SizedBox(height: 12),
+                  SelectableText(reportText),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: reportText));
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(true);
+                }
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('内容をコピー'),
+            ),
+          ],
+        );
+      },
+    );
+    if (copied != true || !context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          supportEmailConfigured
+              ? '宛先・件名・本文をコピーしました。メールアプリから送信してください。'
+              : '通報内容をコピーしました。サポートメールは未設定です。',
+        ),
+      ),
+    );
+
+    final shouldBlock = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('このユーザーもブロックしますか？'),
+          content: const Text('ブロックすると、今後のコメントを表示・読み上げしません。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('しない'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ブロック'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldBlock == true) {
+      await ref.read(mainProvider.notifier).blockUser(comment);
+    }
   }
 }
 

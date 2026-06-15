@@ -5,10 +5,14 @@ import 'neon_effect.dart';
 
 class AnimatedCommentList extends StatelessWidget {
   final List<CommentModel> comments;
+  final ValueChanged<CommentModel>? onBlockUser;
+  final ValueChanged<CommentModel>? onReportComment;
 
   const AnimatedCommentList({
     super.key,
     required this.comments,
+    this.onBlockUser,
+    this.onReportComment,
   });
 
   @override
@@ -34,6 +38,8 @@ class AnimatedCommentList extends StatelessWidget {
           key: ValueKey(comment.id),
           comment: comment,
           isNew: index < 4,
+          onBlockUser: onBlockUser,
+          onReportComment: onReportComment,
         );
       },
     );
@@ -43,11 +49,15 @@ class AnimatedCommentList extends StatelessWidget {
 class _AnimatedCommentTile extends StatefulWidget {
   final CommentModel comment;
   final bool isNew;
+  final ValueChanged<CommentModel>? onBlockUser;
+  final ValueChanged<CommentModel>? onReportComment;
 
   const _AnimatedCommentTile({
     super.key,
     required this.comment,
     required this.isNew,
+    required this.onBlockUser,
+    required this.onReportComment,
   });
 
   @override
@@ -173,6 +183,39 @@ class _AnimatedCommentTileState extends State<_AnimatedCommentTile>
                                   ),
                                 ),
                               ),
+                            if (!isGift &&
+                                (widget.onBlockUser != null ||
+                                    widget.onReportComment != null))
+                              PopupMenuButton<_CommentAction>(
+                                tooltip: 'コメントメニュー',
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.more_vert_rounded,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                onSelected: (action) {
+                                  switch (action) {
+                                    case _CommentAction.block:
+                                      widget.onBlockUser?.call(widget.comment);
+                                      break;
+                                    case _CommentAction.report:
+                                      widget.onReportComment
+                                          ?.call(widget.comment);
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: _CommentAction.block,
+                                    child: Text('このユーザーをブロック'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _CommentAction.report,
+                                    child: Text('このコメントを通報'),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -199,4 +242,9 @@ class _AnimatedCommentTileState extends State<_AnimatedCommentTile>
       ),
     );
   }
+}
+
+enum _CommentAction {
+  block,
+  report,
 }
