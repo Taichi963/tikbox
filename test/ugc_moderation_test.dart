@@ -44,7 +44,7 @@ void main() {
 
     test('builds a minimal email report without internal identifiers', () {
       final report = UgcModerationService.buildReportText(
-        supportEmail: '[SUPPORT_EMAIL]',
+        supportEmail: 'zeb0kui3ackwv4pft1us@gmail.com',
         reason: '嫌がらせ・誹謗中傷',
         displayName: 'Viewer',
         userKeySource: 'uniqueId',
@@ -53,7 +53,7 @@ void main() {
         receivedAt: DateTime.utc(2026, 6, 13, 12, 30),
       );
 
-      expect(report, contains('宛先: [SUPPORT_EMAIL]'));
+      expect(report, contains('宛先: zeb0kui3ackwv4pft1us@gmail.com'));
       expect(report, contains('件名: LiveVoice Box コメント通報'));
       expect(report, contains('通報理由: 嫌がらせ・誹謗中傷'));
       expect(report, contains('userKey種別: uniqueId'));

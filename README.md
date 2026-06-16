@@ -60,13 +60,13 @@ The full current documentation is available in:
 - [Terms of Use](docs/terms.md)
 - [Store Release Kit](docs/release_kit.md)
 
-Submission placeholders that must be replaced before store submission:
+Submission information:
 
 - Operator: `[OPERATOR_NAME]`
-- Support email: `[SUPPORT_EMAIL]`
-- Privacy Policy: `[PRIVACY_URL]`
-- Support: `[SUPPORT_URL]`
-- Terms: `[TERMS_URL]`
+- Support email: zeb0kui3ackwv4pft1us@gmail.com
+- Privacy Policy: https://taichi963.github.io/tikbox/privacy.html
+- Support: https://taichi963.github.io/tikbox/support.html
+- Terms: https://taichi963.github.io/tikbox/terms.html
 
 ## Permissions And Background Audio
 

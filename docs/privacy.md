@@ -8,9 +8,9 @@ Developer/operator: `[OPERATOR_NAME]`
 
 Privacy contact: zeb0kui3ackwv4pft1us@gmail.com
 
-Privacy Policy URL: `[PRIVACY_URL]`
+Privacy Policy URL: https://taichi963.github.io/tikbox/privacy.html
 
-Support URL: `[SUPPORT_URL]`
+Support URL: https://taichi963.github.io/tikbox/support.html
 
 The developer/operator name and effective date must be completed before this
 policy is submitted to an app store.

@@ -4,9 +4,9 @@ LiveVoice Box はライブ配信中の公開コメント読み上げを補助す
 
 ## Documents
 
-- [Privacy Policy](privacy.md)
-- [Terms of Service](terms.md)
-- [Support](support.md)
+- [Privacy Policy](privacy.html)
+- [Terms of Service](terms.html)
+- [Support](support.html)
 
 ## Contact
 

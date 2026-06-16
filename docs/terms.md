@@ -8,9 +8,9 @@ Developer/operator: `[OPERATOR_NAME]`
 
 Support contact: zeb0kui3ackwv4pft1us@gmail.com
 
-Terms URL: `[TERMS_URL]`
+Terms URL: https://taichi963.github.io/tikbox/terms.html
 
-Support URL: `[SUPPORT_URL]`
+Support URL: https://taichi963.github.io/tikbox/support.html
 
 Governing law and jurisdiction: `[GOVERNING_LAW]`
 
@@ -69,8 +69,7 @@ vibration, and diagnostic purposes. Settings and saved stream IDs are stored
 locally on the device.
 
 Details are provided in the Privacy Policy. The public privacy-policy URL is
-`[PRIVACY_URL]`. This placeholder must be replaced with a public URL and linked
-from the app before store submission.
+https://taichi963.github.io/tikbox/privacy.html.
 
 ## 6. Prohibited Use
 
@@ -127,8 +126,14 @@ publication.
 
 ## 10. Suspension, Termination, And Support
 
-Users may stop using and uninstall the app at any time. Developer-side support,
-distribution suspension, and termination conditions are 未確認.
+Users may stop using and uninstall the app at any time.
+
+The developer/operator may suspend app distribution, support, or a specific
+feature when continued operation is not reasonably possible because of service
+changes, store-policy requirements, security concerns, legal concerns,
+maintenance constraints, or prohibited use.
+
+Support is provided through the published support contact when available.
 
 ## 11. Changes To These Terms
 

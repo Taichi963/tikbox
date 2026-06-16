@@ -21,7 +21,7 @@ const String _lastUsernameKey = 'tikbox_last_username_v1';
 const String _savedUsernamesKey = 'tikbox_saved_usernames_v1';
 const int _maxSavedUsernames = 5;
 const String _voicePreviewText = 'こんにちは。LiveVoice Boxの読み上げテストです。';
-const String _supportEmail = '[SUPPORT_EMAIL]';
+const String _supportEmail = 'zeb0kui3ackwv4pft1us@gmail.com';
 
 /// MVP: 接続・TTS・最小設定のコメント一覧のみ
 class MainScreen extends ConsumerStatefulWidget {

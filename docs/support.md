@@ -6,7 +6,7 @@ Developer/operator: `[OPERATOR_NAME]`
 
 Support email: zeb0kui3ackwv4pft1us@gmail.com
 
-Support URL: `[SUPPORT_URL]`
+Support URL: https://taichi963.github.io/tikbox/support.html
 
 [Privacy Policy](privacy.html) | [Terms of Use](terms.html) |
 [Support](support.html) |

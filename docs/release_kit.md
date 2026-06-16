@@ -2,14 +2,10 @@
 
 ## Submission Status
 
-The following submission placeholders must be replaced before submission:
+The following submission fields must be completed before submission:
 
 - developer/operator: `[OPERATOR_NAME]`
-- support email and reviewer contact: `[SUPPORT_EMAIL]`
 - effective date: `[EFFECTIVE_DATE]`
-- Privacy Policy URL: `[PRIVACY_URL]`
-- Support URL: `[SUPPORT_URL]`
-- Terms URL: `[TERMS_URL]`
 - governing law and jurisdiction: `[GOVERNING_LAW]`
 
 The following review items also remain to be completed:
@@ -94,9 +90,9 @@ authorized to support. Connection availability is not guaranteed.
 Evidence that this app's access to and display of public LIVE data is permitted
 under the applicable third-party service terms: 未確認
 
-Reviewer contact: `[SUPPORT_EMAIL]`
+Reviewer contact: zeb0kui3ackwv4pft1us@gmail.com
 
-Privacy-policy URL: `[PRIVACY_URL]`
+Privacy-policy URL: https://taichi963.github.io/tikbox/privacy.html
 
 ## Google Play Permission And Foreground-Service Explanation
 
@@ -127,8 +123,8 @@ Store disclosures must match `docs/privacy.md`:
 - public comments, public user display names, and public gift events are
   processed for app functionality
 - prepared comment reports are copied to the clipboard and are not transmitted
-  automatically by LiveVoice Box; the user sends them to `[SUPPORT_EMAIL]`
-  using their email app
+  automatically by LiveVoice Box; the user sends them to
+  zeb0kui3ackwv4pft1us@gmail.com using their email app
 - diagnostic operating-system logs may contain stream IDs, public display
   names, gift information, and connection/audio states
 - the bundled LIVE connection library uses a transient service-issued `ttwid`
