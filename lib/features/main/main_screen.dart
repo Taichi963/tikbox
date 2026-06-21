@@ -344,6 +344,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final connectedUsername =
         ref.watch(mainProvider.select((s) => s.connectedUsername));
     final sessionStats = ref.watch(mainProvider.select((s) => s.sessionStats));
+    final sessionHighlights = sessionStats.topHighlights;
     final liveState = ref.watch(liveProvider);
     final ttsSettings = ref.watch(ttsSettingsProvider);
 
@@ -396,6 +397,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       .clamp(140.0, controlPanelUpperBound)
                       .toDouble();
                   final sectionGap = isKeyboardVisible ? 8.0 : 16.0;
+                  final summaryMaxHeight = (constraints.maxHeight * 0.34)
+                      .clamp(150.0, 280.0)
+                      .toDouble();
                   final connectingNotice =
                       liveState.isConnecting ? liveState.errorMessage : null;
                   final content = Column(
@@ -616,7 +620,25 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                           sessionStats.hasCompletedSession) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _SessionScoreCard(stats: sessionStats),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: summaryMaxHeight,
+                            ),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _SessionScoreCard(stats: sessionStats),
+                                  if (sessionHighlights.isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    _SessionHighlightsCard(
+                                      events: sessionHighlights,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                         SizedBox(height: sectionGap),
                       ],
@@ -1512,6 +1534,102 @@ class _SessionScoreCard extends StatelessWidget {
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+}
+
+class _SessionHighlightsCard extends StatelessWidget {
+  final List<HighlightEvent> events;
+
+  const _SessionHighlightsCard({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFFEF6CFF);
+
+    return NeonPanel(
+      glowColor: accent,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: accent, size: 20),
+              SizedBox(width: 8),
+              Text(
+                '本日のハイライト',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (var index = 0; index < events.length; index++) ...[
+            if (index > 0)
+              Divider(color: Colors.white.withValues(alpha: 0.08), height: 10),
+            _HighlightRow(event: events[index]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HighlightRow extends StatelessWidget {
+  final HighlightEvent event;
+
+  const _HighlightRow({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final localTime = event.timestamp.toLocal();
+    final time = '${localTime.hour.toString().padLeft(2, '0')}:'
+        '${localTime.minute.toString().padLeft(2, '0')}';
+    final accent = switch (event.type) {
+      HighlightType.premiumGift => const Color(0xFFEF6CFF),
+      HighlightType.bigGift => const Color(0xFFFFD95C),
+      HighlightType.gift => const Color(0xFFFFB54A),
+      HighlightType.commentRush => const Color(0xFF58F5D1),
+    };
+    final icon = switch (event.type) {
+      HighlightType.premiumGift => Icons.workspace_premium_rounded,
+      HighlightType.bigGift => Icons.auto_awesome_rounded,
+      HighlightType.gift => Icons.card_giftcard_rounded,
+      HighlightType.commentRush => Icons.forum_rounded,
+    };
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 42,
+          child: Text(
+            time,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.58),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Icon(icon, color: accent, size: 17),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            event.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

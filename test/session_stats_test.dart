@@ -82,20 +82,96 @@ void main() {
       );
       expect(largeStats.score, 100);
     });
+
+    test('records one comment rush and all gift highlight types', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(mainProvider.notifier);
+      await notifier.ensureModerationReady();
+      final startedAt = DateTime(2026, 1, 1, 12);
+
+      notifier.startLive('streamer');
+      for (var index = 0; index < 21; index++) {
+        notifier.addComment(
+          _comment(
+            id: 'comment-$index',
+            createdAt: startedAt.add(Duration(seconds: index)),
+          ),
+        );
+      }
+      notifier.addComment(
+        _gift(value: 50, createdAt: startedAt.add(const Duration(seconds: 21))),
+      );
+      notifier.addComment(
+        _gift(
+          value: 100,
+          createdAt: startedAt.add(const Duration(seconds: 22)),
+        ),
+      );
+      notifier.addComment(
+        _gift(
+          value: 1000,
+          createdAt: startedAt.add(const Duration(seconds: 23)),
+        ),
+      );
+      notifier.stopLive();
+
+      final highlights = container.read(mainProvider).sessionStats.highlights;
+      expect(
+        highlights.where((event) => event.type == HighlightType.commentRush),
+        hasLength(1),
+      );
+      expect(
+        highlights.map((event) => event.type),
+        containsAll([
+          HighlightType.gift,
+          HighlightType.bigGift,
+          HighlightType.premiumGift,
+        ]),
+      );
+    });
+
+    test('caps highlights and keeps premium events in the top five', () {
+      final startedAt = DateTime(2026, 1, 1, 12);
+      var stats = SessionStats(startedAt: startedAt);
+      for (var index = 0; index < 25; index++) {
+        stats = stats.addHighlight(
+          HighlightEvent(
+            timestamp: startedAt.add(Duration(seconds: index)),
+            type: HighlightType.commentRush,
+            title: 'コメント急増',
+          ),
+        );
+      }
+      stats = stats.addHighlight(
+        HighlightEvent(
+          timestamp: startedAt,
+          type: HighlightType.premiumGift,
+          title: 'PREMIUM GIFT',
+        ),
+      );
+
+      expect(stats.highlights, hasLength(20));
+      expect(stats.topHighlights, hasLength(5));
+      expect(
+        stats.topHighlights.map((event) => event.type),
+        contains(HighlightType.premiumGift),
+      );
+    });
   });
 }
 
-CommentModel _comment() {
+CommentModel _comment({String id = 'comment', DateTime? createdAt}) {
   return CommentModel(
-    id: 'comment',
+    id: id,
     userName: 'viewer',
     text: 'hello',
     type: CommentType.normal,
-    createdAt: DateTime(2026),
+    createdAt: createdAt ?? DateTime(2026),
   );
 }
 
-CommentModel _gift({required int value}) {
+CommentModel _gift({required int value, DateTime? createdAt}) {
   return CommentModel(
     id: 'gift-$value',
     userName: 'viewer',
@@ -104,6 +180,6 @@ CommentModel _gift({required int value}) {
     giftName: 'Gift',
     giftCount: 1,
     giftValue: value,
-    createdAt: DateTime(2026),
+    createdAt: createdAt ?? DateTime(2026),
   );
 }

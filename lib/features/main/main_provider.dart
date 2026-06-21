@@ -11,6 +11,32 @@ import '../../services/ugc_moderation_service.dart';
 const String _blockedUsersPreferenceKey = 'tikbox_blocked_users_v1';
 const String _customBlockedTermsPreferenceKey = 'tikbox_custom_ng_words_v1';
 
+enum HighlightType {
+  commentRush,
+  gift,
+  bigGift,
+  premiumGift,
+}
+
+class HighlightEvent {
+  final DateTime timestamp;
+  final HighlightType type;
+  final String title;
+
+  const HighlightEvent({
+    required this.timestamp,
+    required this.type,
+    required this.title,
+  });
+
+  int get priority => switch (type) {
+        HighlightType.premiumGift => 4,
+        HighlightType.bigGift => 3,
+        HighlightType.gift => 2,
+        HighlightType.commentRush => 1,
+      };
+}
+
 class SessionStats {
   final DateTime? startedAt;
   final Duration lastDuration;
@@ -18,6 +44,7 @@ class SessionStats {
   final int giftCount;
   final int bigGiftCount;
   final int premiumGiftCount;
+  final List<HighlightEvent> highlights;
 
   const SessionStats({
     this.startedAt,
@@ -26,6 +53,7 @@ class SessionStats {
     this.giftCount = 0,
     this.bigGiftCount = 0,
     this.premiumGiftCount = 0,
+    this.highlights = const [],
   });
 
   bool get hasCompletedSession =>
@@ -43,6 +71,18 @@ class SessionStats {
         .toInt();
   }
 
+  List<HighlightEvent> get topHighlights {
+    final selected = [...highlights]..sort((a, b) {
+        final priorityOrder = b.priority.compareTo(a.priority);
+        return priorityOrder != 0
+            ? priorityOrder
+            : b.timestamp.compareTo(a.timestamp);
+      });
+    final topFive = selected.take(5).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return List.unmodifiable(topFive);
+  }
+
   SessionStats record(CommentModel comment) {
     if (startedAt == null) {
       return this;
@@ -55,6 +95,7 @@ class SessionStats {
         giftCount: giftCount,
         bigGiftCount: bigGiftCount,
         premiumGiftCount: premiumGiftCount,
+        highlights: highlights,
       );
     }
     return SessionStats(
@@ -65,6 +106,25 @@ class SessionStats {
       bigGiftCount: bigGiftCount + (comment.giftRank == GiftRank.big ? 1 : 0),
       premiumGiftCount:
           premiumGiftCount + (comment.giftRank == GiftRank.premium ? 1 : 0),
+      highlights: highlights,
+    );
+  }
+
+  SessionStats addHighlight(HighlightEvent event) {
+    final bounded = [...highlights, event]..sort((a, b) {
+        final priorityOrder = b.priority.compareTo(a.priority);
+        return priorityOrder != 0
+            ? priorityOrder
+            : b.timestamp.compareTo(a.timestamp);
+      });
+    return SessionStats(
+      startedAt: startedAt,
+      lastDuration: lastDuration,
+      commentCount: commentCount,
+      giftCount: giftCount,
+      bigGiftCount: bigGiftCount,
+      premiumGiftCount: premiumGiftCount,
+      highlights: List.unmodifiable(bounded.take(20)),
     );
   }
 
@@ -80,6 +140,7 @@ class SessionStats {
       giftCount: giftCount,
       bigGiftCount: bigGiftCount,
       premiumGiftCount: premiumGiftCount,
+      highlights: highlights,
     );
   }
 }
@@ -175,7 +236,13 @@ class MainState {
 }
 
 class MainNotifier extends Notifier<MainState> {
+  static const int _commentRushThreshold = 20;
+  static const Duration _commentRushWindow = Duration(seconds: 30);
+  static const Duration _commentRushCooldown = Duration(seconds: 30);
+
   Future<void>? _moderationRestoreFuture;
+  final List<DateTime> _recentCommentTimestamps = [];
+  DateTime? _lastCommentRushAt;
 
   @override
   MainState build() {
@@ -189,6 +256,7 @@ class MainNotifier extends Notifier<MainState> {
   }
 
   void startLive(String username) {
+    _resetHighlightTracking();
     state = state.copyWith(
       isLive: true,
       connectedUsername: username,
@@ -197,6 +265,7 @@ class MainNotifier extends Notifier<MainState> {
   }
 
   void stopLive() {
+    _resetHighlightTracking();
     state = state.copyWith(
       isLive: false,
       clearConnectedUsername: true,
@@ -208,10 +277,71 @@ class MainNotifier extends Notifier<MainState> {
 
   void addComment(CommentModel comment) {
     final updated = <CommentModel>[comment, ...state.comments];
+    var sessionStats = state.sessionStats.record(comment);
+    if (sessionStats.startedAt != null) {
+      final highlight = _highlightFor(comment);
+      if (highlight != null) {
+        sessionStats = sessionStats.addHighlight(highlight);
+      }
+    }
     state = state.copyWith(
       comments: updated.length > 200 ? updated.take(200).toList() : updated,
-      sessionStats: state.sessionStats.record(comment),
+      sessionStats: sessionStats,
     );
+  }
+
+  HighlightEvent? _highlightFor(CommentModel comment) {
+    if (comment.isGift) {
+      return switch (comment.giftRank) {
+        GiftRank.premium => HighlightEvent(
+            timestamp: comment.createdAt,
+            type: HighlightType.premiumGift,
+            title: 'PREMIUM GIFT',
+          ),
+        GiftRank.big => HighlightEvent(
+            timestamp: comment.createdAt,
+            type: HighlightType.bigGift,
+            title: 'BIG GIFT',
+          ),
+        GiftRank.normal => HighlightEvent(
+            timestamp: comment.createdAt,
+            type: HighlightType.gift,
+            title: 'ギフト',
+          ),
+      };
+    }
+
+    final timestamp = comment.createdAt;
+    _recentCommentTimestamps.add(timestamp);
+    _recentCommentTimestamps.removeWhere(
+      (item) => timestamp.difference(item) > _commentRushWindow,
+    );
+    if (_recentCommentTimestamps.length > _commentRushThreshold) {
+      _recentCommentTimestamps.removeRange(
+        0,
+        _recentCommentTimestamps.length - _commentRushThreshold,
+      );
+    }
+    if (_recentCommentTimestamps.length < _commentRushThreshold) {
+      return null;
+    }
+
+    final previousRush = _lastCommentRushAt;
+    if (previousRush != null &&
+        timestamp.difference(previousRush) < _commentRushCooldown) {
+      return null;
+    }
+    _lastCommentRushAt = timestamp;
+    return HighlightEvent(
+      timestamp: timestamp,
+      type: HighlightType.commentRush,
+      title: 'コメント急増',
+    );
+  }
+
+  void _resetHighlightTracking() {
+    _recentCommentTimestamps.clear();
+    _lastCommentRushAt = null;
   }
 
   void clearComments() {
