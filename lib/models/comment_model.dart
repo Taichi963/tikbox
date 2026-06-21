@@ -3,6 +3,12 @@ enum CommentType {
   gift,
 }
 
+enum GiftRank {
+  normal,
+  big,
+  premium,
+}
+
 class CommentModel {
   final String id;
   final String userName;
@@ -31,6 +37,19 @@ class CommentModel {
   });
 
   bool get isGift => type == CommentType.gift;
+
+  GiftRank get giftRank {
+    if (!isGift) {
+      return GiftRank.normal;
+    }
+    if (giftValue >= 1000) {
+      return GiftRank.premium;
+    }
+    if (giftValue >= 100) {
+      return GiftRank.big;
+    }
+    return GiftRank.normal;
+  }
 
   int get priority => isGift ? 100 : 10;
 

@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import '../models/comment_model.dart';
 import 'neon_effect.dart';
 
-const int _kHighValueGiftThreshold = 100;
-
 class GiftAnimationOverlay extends StatefulWidget {
   final List<CommentModel> comments;
   final bool enabled;
@@ -75,8 +73,10 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final hasHighValueBurst = _activeBursts.any(
-      (comment) => comment.giftValue >= _kHighValueGiftThreshold,
+    final highlightRank = _activeBursts.fold<GiftRank>(
+      GiftRank.normal,
+      (rank, comment) =>
+          comment.giftRank.index > rank.index ? comment.giftRank : rank,
     );
 
     return IgnorePointer(
@@ -87,7 +87,7 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
             Positioned.fill(
               child: _GiftFlashLayer(
                 count: _activeBursts.length,
-                highlightHighValue: hasHighValueBurst,
+                highlightRank: highlightRank,
               ),
             ),
           ..._activeBursts.asMap().entries.map((entry) {
@@ -108,11 +108,11 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
 
 class _GiftFlashLayer extends StatefulWidget {
   final int count;
-  final bool highlightHighValue;
+  final GiftRank highlightRank;
 
   const _GiftFlashLayer({
     required this.count,
-    required this.highlightHighValue,
+    required this.highlightRank,
   });
 
   @override
@@ -137,20 +137,29 @@ class _GiftFlashLayerState extends State<_GiftFlashLayer>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final flash =
-            (1 - Curves.easeOut.transform(_controller.value)) *
-            (widget.highlightHighValue ? 0.34 : 0.22);
+        final isPremium = widget.highlightRank == GiftRank.premium;
+        final isHighValue = widget.highlightRank != GiftRank.normal;
+        final flash = (1 - Curves.easeOut.transform(_controller.value)) *
+            (isPremium
+                ? 0.44
+                : isHighValue
+                    ? 0.34
+                    : 0.22);
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
               colors: [
-                (widget.highlightHighValue
-                        ? const Color(0xFFFFF3B0)
-                        : Colors.white)
+                (isPremium
+                        ? const Color(0xFFF4D7FF)
+                        : isHighValue
+                            ? const Color(0xFFFFF3B0)
+                            : Colors.white)
                     .withValues(alpha: flash),
-                (widget.highlightHighValue
-                        ? const Color(0xFFFF5C8A)
-                        : const Color(0xFFFFA726))
+                (isPremium
+                        ? const Color(0xFFEF6CFF)
+                        : isHighValue
+                            ? const Color(0xFFFF5C8A)
+                            : const Color(0xFFFFA726))
                     .withValues(alpha: flash * 0.55),
                 Colors.transparent,
               ],
@@ -186,8 +195,9 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
   late final Animation<double> _scale;
   late final Animation<Offset> _slide;
 
-  bool get _isHighValue =>
-      widget.comment.giftValue >= _kHighValueGiftThreshold;
+  GiftRank get _rank => widget.comment.giftRank;
+  bool get _isHighValue => _rank != GiftRank.normal;
+  bool get _isPremium => _rank == GiftRank.premium;
 
   @override
   void initState() {
@@ -195,9 +205,11 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
 
     _controller = AnimationController(
       vsync: this,
-      duration: _isHighValue
-          ? const Duration(milliseconds: 2200)
-          : const Duration(milliseconds: 1650),
+      duration: _isPremium
+          ? const Duration(milliseconds: 2400)
+          : _isHighValue
+              ? const Duration(milliseconds: 2100)
+              : const Duration(milliseconds: 1650),
     )..forward();
 
     _fade = CurvedAnimation(
@@ -206,7 +218,11 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
     );
 
     _scale = Tween<double>(
-      begin: _isHighValue ? 0.62 : 0.72,
+      begin: _isPremium
+          ? 0.5
+          : _isHighValue
+              ? 0.62
+              : 0.72,
       end: 1,
     ).animate(
       CurvedAnimation(
@@ -216,7 +232,13 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
     );
 
     _slide = Tween<Offset>(
-      begin: Offset(0, _isHighValue ? 0.34 : 0.24),
+      begin: Offset(
+          0,
+          _isPremium
+              ? 0.42
+              : _isHighValue
+                  ? 0.34
+                  : 0.24),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
@@ -241,17 +263,31 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final topOffset = _isHighValue
-        ? (screenHeight * 0.22) + (widget.lane * 54.0)
-        : 110.0 + (widget.lane * 62.0);
-    final cardInset = _isHighValue ? 10.0 : 18.0;
-    final glowColor = _isHighValue
-        ? const Color(0xFFFFD95C)
-        : const Color(0xFFFFB54A);
-    final title = _isHighValue ? 'MEGA GIFT' : 'GIFT BURST';
-    final titleGlow = _isHighValue
-        ? const Color(0xFFFFF0A8)
-        : const Color(0xFFFFD65C);
+    final topOffset = _isPremium
+        ? (screenHeight * 0.28) + (widget.lane * 48.0)
+        : _isHighValue
+            ? (screenHeight * 0.22) + (widget.lane * 54.0)
+            : 110.0 + (widget.lane * 62.0);
+    final cardInset = _isPremium
+        ? 6.0
+        : _isHighValue
+            ? 10.0
+            : 18.0;
+    final glowColor = _isPremium
+        ? const Color(0xFFEF6CFF)
+        : _isHighValue
+            ? const Color(0xFFFFD95C)
+            : const Color(0xFFFFB54A);
+    final title = _isPremium
+        ? 'PREMIUM GIFT!!'
+        : _isHighValue
+            ? 'BIG GIFT!'
+            : 'GIFT BURST';
+    final titleGlow = _isPremium
+        ? const Color(0xFFF4D7FF)
+        : _isHighValue
+            ? const Color(0xFFFFF0A8)
+            : const Color(0xFFFFD65C);
     final valueLabel = widget.comment.giftValue > 0
         ? 'Value ${widget.comment.giftValue}'
         : 'Special gift burst';
@@ -270,9 +306,13 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
                       center: const Alignment(0, -0.12),
                       radius: 0.95,
                       colors: [
-                        const Color(0xFFFFD95C)
+                        (_isPremium
+                                ? const Color(0xFFEF6CFF)
+                                : const Color(0xFFFFD95C))
                             .withValues(alpha: 0.18 * (1 - _controller.value)),
-                        const Color(0xFFFF5C8A)
+                        (_isPremium
+                                ? const Color(0xFF5EF8FF)
+                                : const Color(0xFFFF5C8A))
                             .withValues(alpha: 0.12 * (1 - _controller.value)),
                         Colors.transparent,
                       ],
@@ -356,8 +396,7 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
                                         glowColor: titleGlow,
                                         style: TextStyle(
                                           fontSize: _isHighValue ? 14 : 12,
-                                          letterSpacing:
-                                              _isHighValue ? 2.4 : 2,
+                                          letterSpacing: _isHighValue ? 2.4 : 2,
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
@@ -376,9 +415,9 @@ class _GiftBurstWidgetState extends State<_GiftBurstWidget>
                                             color: const Color(0x66FFF3B0),
                                           ),
                                         ),
-                                        child: const Text(
-                                          'SPECIAL',
-                                          style: TextStyle(
+                                        child: Text(
+                                          _isPremium ? 'PREMIUM' : 'SPECIAL',
+                                          style: const TextStyle(
                                             color: Color(0xFFFFF3B0),
                                             fontSize: 11,
                                             fontWeight: FontWeight.w900,
@@ -466,8 +505,7 @@ class _GiftParticlePainter extends CustomPainter {
     final particleCount = isHighValue ? 26 : 18;
     for (var i = 0; i < particleCount; i++) {
       final angle = (math.pi * 2 / particleCount) * i;
-      final distance =
-          (isHighValue ? 36 : 24) +
+      final distance = (isHighValue ? 36 : 24) +
           (progress * (isHighValue ? 210 : 160)) +
           ((i % 3) * (isHighValue ? 16 : 12));
       final point = Offset(
@@ -476,14 +514,14 @@ class _GiftParticlePainter extends CustomPainter {
       );
       final radius =
           (i.isEven ? (isHighValue ? 9.0 : 7.0) : (isHighValue ? 5.5 : 4.5)) *
-          fade;
+              fade;
       particlePaint.color = (i % 3 == 0
               ? const Color(0xFFFFF2A8)
               : i.isEven
-              ? const Color(0xFFFFD25F)
-              : isHighValue
-              ? const Color(0xFFFF5C8A)
-              : const Color(0xFF5EF8FF))
+                  ? const Color(0xFFFFD25F)
+                  : isHighValue
+                      ? const Color(0xFFFF5C8A)
+                      : const Color(0xFF5EF8FF))
           .withValues(alpha: (isHighValue ? 0.38 : 0.28) * fade);
       canvas.drawCircle(point, radius, particlePaint);
     }

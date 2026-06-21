@@ -19,6 +19,7 @@ class EffectSoundService {
   static const int _highGiftValueThreshold = 100;
   static const int _mediumGiftSoundThreshold = 10;
   static const int _largeGiftSoundThreshold = 100;
+  static const int _premiumGiftSoundThreshold = 1000;
 
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
@@ -178,6 +179,12 @@ class EffectSoundService {
       return;
     }
 
+    if (giftTier == _GiftSoundTier.premium) {
+      AppLogger.info('selected gift tone tier: premium comboTier=$comboTier');
+      await _playPremiumGift();
+      return;
+    }
+
     if (giftTier == _GiftSoundTier.gold) {
       AppLogger.info('selected gift tone tier: gold comboTier=$comboTier');
       await _playHighGiftCombo(randomVal, comboTier);
@@ -208,7 +215,8 @@ class EffectSoundService {
     if (value <= 0) return _GiftSoundTier.fallback;
     if (value < _mediumGiftSoundThreshold) return _GiftSoundTier.bronze;
     if (value < _largeGiftSoundThreshold) return _GiftSoundTier.silver;
-    return _GiftSoundTier.gold;
+    if (value < _premiumGiftSoundThreshold) return _GiftSoundTier.gold;
+    return _GiftSoundTier.premium;
   }
 
   static bool _isHeartMeGift(String? giftName) {
@@ -534,6 +542,10 @@ class EffectSoundService {
         volumeScale: 0.68,
       );
     }
+  }
+
+  Future<void> _playPremiumGift() async {
+    await _playTone('rare_large');
   }
 
   void _playToneAfter(
@@ -1073,4 +1085,5 @@ enum _GiftSoundTier {
   bronze,
   silver,
   gold,
+  premium,
 }

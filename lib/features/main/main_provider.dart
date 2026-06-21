@@ -11,6 +11,79 @@ import '../../services/ugc_moderation_service.dart';
 const String _blockedUsersPreferenceKey = 'tikbox_blocked_users_v1';
 const String _customBlockedTermsPreferenceKey = 'tikbox_custom_ng_words_v1';
 
+class SessionStats {
+  final DateTime? startedAt;
+  final Duration lastDuration;
+  final int commentCount;
+  final int giftCount;
+  final int bigGiftCount;
+  final int premiumGiftCount;
+
+  const SessionStats({
+    this.startedAt,
+    this.lastDuration = Duration.zero,
+    this.commentCount = 0,
+    this.giftCount = 0,
+    this.bigGiftCount = 0,
+    this.premiumGiftCount = 0,
+  });
+
+  bool get hasCompletedSession =>
+      startedAt == null &&
+      (lastDuration > Duration.zero || commentCount > 0 || giftCount > 0);
+
+  int get score {
+    final liveMinutes = lastDuration.inMinutes;
+    return (commentCount +
+            giftCount * 5 +
+            bigGiftCount * 15 +
+            premiumGiftCount * 30 +
+            liveMinutes * 2)
+        .clamp(0, 100)
+        .toInt();
+  }
+
+  SessionStats record(CommentModel comment) {
+    if (startedAt == null) {
+      return this;
+    }
+    if (!comment.isGift) {
+      return SessionStats(
+        startedAt: startedAt,
+        lastDuration: lastDuration,
+        commentCount: commentCount + 1,
+        giftCount: giftCount,
+        bigGiftCount: bigGiftCount,
+        premiumGiftCount: premiumGiftCount,
+      );
+    }
+    return SessionStats(
+      startedAt: startedAt,
+      lastDuration: lastDuration,
+      commentCount: commentCount,
+      giftCount: giftCount + 1,
+      bigGiftCount: bigGiftCount + (comment.giftRank == GiftRank.big ? 1 : 0),
+      premiumGiftCount:
+          premiumGiftCount + (comment.giftRank == GiftRank.premium ? 1 : 0),
+    );
+  }
+
+  SessionStats finish(DateTime endedAt) {
+    final started = startedAt;
+    if (started == null) {
+      return this;
+    }
+    final elapsed = endedAt.difference(started);
+    return SessionStats(
+      lastDuration: elapsed.isNegative ? Duration.zero : elapsed,
+      commentCount: commentCount,
+      giftCount: giftCount,
+      bigGiftCount: bigGiftCount,
+      premiumGiftCount: premiumGiftCount,
+    );
+  }
+}
+
 class BlockedUserEntry {
   final String key;
   final String label;
@@ -65,6 +138,7 @@ class MainState {
   final List<BlockedUserEntry> blockedUsers;
   final List<String> customBlockedTerms;
   final bool moderationReady;
+  final SessionStats sessionStats;
 
   const MainState({
     this.isLive = false,
@@ -73,6 +147,7 @@ class MainState {
     this.blockedUsers = const [],
     this.customBlockedTerms = const [],
     this.moderationReady = false,
+    this.sessionStats = const SessionStats(),
   });
 
   MainState copyWith({
@@ -82,6 +157,7 @@ class MainState {
     List<BlockedUserEntry>? blockedUsers,
     List<String>? customBlockedTerms,
     bool? moderationReady,
+    SessionStats? sessionStats,
     bool clearConnectedUsername = false,
   }) {
     return MainState(
@@ -93,6 +169,7 @@ class MainState {
       blockedUsers: blockedUsers ?? this.blockedUsers,
       customBlockedTerms: customBlockedTerms ?? this.customBlockedTerms,
       moderationReady: moderationReady ?? this.moderationReady,
+      sessionStats: sessionStats ?? this.sessionStats,
     );
   }
 }
@@ -115,6 +192,7 @@ class MainNotifier extends Notifier<MainState> {
     state = state.copyWith(
       isLive: true,
       connectedUsername: username,
+      sessionStats: SessionStats(startedAt: DateTime.now()),
     );
   }
 
@@ -122,6 +200,7 @@ class MainNotifier extends Notifier<MainState> {
     state = state.copyWith(
       isLive: false,
       clearConnectedUsername: true,
+      sessionStats: state.sessionStats.finish(DateTime.now()),
       blockedUsers:
           state.blockedUsers.where((entry) => entry.persistent).toList(),
     );
@@ -131,6 +210,7 @@ class MainNotifier extends Notifier<MainState> {
     final updated = <CommentModel>[comment, ...state.comments];
     state = state.copyWith(
       comments: updated.length > 200 ? updated.take(200).toList() : updated,
+      sessionStats: state.sessionStats.record(comment),
     );
   }
 

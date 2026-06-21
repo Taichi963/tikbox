@@ -343,6 +343,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final isLive = ref.watch(mainProvider.select((s) => s.isLive));
     final connectedUsername =
         ref.watch(mainProvider.select((s) => s.connectedUsername));
+    final sessionStats = ref.watch(mainProvider.select((s) => s.sessionStats));
     final liveState = ref.watch(liveProvider);
     final ttsSettings = ref.watch(ttsSettingsProvider);
 
@@ -609,6 +610,16 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         ),
                       ),
                       SizedBox(height: sectionGap),
+                      if (!isLive &&
+                          !liveState.isConnecting &&
+                          !isKeyboardVisible &&
+                          sessionStats.hasCompletedSession) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _SessionScoreCard(stats: sessionStats),
+                        ),
+                        SizedBox(height: sectionGap),
+                      ],
                       const Expanded(child: _CommentSection()),
                     ],
                   );
@@ -1421,6 +1432,126 @@ class _ConnectionLoadingLogo extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SessionScoreCard extends StatelessWidget {
+  final SessionStats stats;
+
+  const _SessionScoreCard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF58F5D1);
+    final duration = _formatDuration(stats.lastDuration);
+
+    return NeonPanel(
+      glowColor: accent,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.emoji_events_rounded, color: accent, size: 22),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '本日の配信スコア',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${stats.score}点',
+                style: const TextStyle(
+                  color: accent,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _SessionMetric(label: '配信時間', value: duration),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SessionMetric(
+                  label: 'コメント',
+                  value: '${stats.commentCount}件',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SessionMetric(
+                  label: 'ギフト',
+                  value: '${stats.giftCount}件',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+}
+
+class _SessionMetric extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SessionMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.62),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

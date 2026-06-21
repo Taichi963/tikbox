@@ -44,8 +44,8 @@ void main() {
       expect(EffectSoundService.debugGiftSoundTierName(99), 'silver');
       expect(EffectSoundService.debugGiftSoundTierName(100), 'gold');
       expect(EffectSoundService.debugGiftSoundTierName(999), 'gold');
-      expect(EffectSoundService.debugGiftSoundTierName(1000), 'gold');
-      expect(EffectSoundService.debugGiftSoundTierName(10000), 'gold');
+      expect(EffectSoundService.debugGiftSoundTierName(1000), 'premium');
+      expect(EffectSoundService.debugGiftSoundTierName(10000), 'premium');
     });
 
     test('detects Heart Me gift names safely', () {
