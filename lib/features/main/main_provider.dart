@@ -255,6 +255,11 @@ class MainNotifier extends Notifier<MainState> {
     await _moderationRestoreFuture;
   }
 
+  void prepareSession() {
+    _resetHighlightTracking();
+    state = state.copyWith(sessionStats: const SessionStats());
+  }
+
   void startLive(String username) {
     _resetHighlightTracking();
     state = state.copyWith(

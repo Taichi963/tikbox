@@ -351,6 +351,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     ref.listen<LiveState>(liveProvider, (previous, next) {
       final wasConnecting = previous?.isConnecting ?? false;
       if (!wasConnecting && next.isConnecting) {
+        ref.read(mainProvider.notifier).prepareSession();
         _startConnectionLoading();
       } else if (wasConnecting && !next.isConnecting) {
         if (next.wsStatus == WsStatus.connected) {
@@ -397,9 +398,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                       .clamp(140.0, controlPanelUpperBound)
                       .toDouble();
                   final sectionGap = isKeyboardVisible ? 8.0 : 16.0;
-                  final summaryMaxHeight = (constraints.maxHeight * 0.34)
-                      .clamp(150.0, 280.0)
-                      .toDouble();
+                  final showSessionSummary = !isLive &&
+                      !liveState.isConnecting &&
+                      !isKeyboardVisible &&
+                      liveState.wsStatus == WsStatus.disconnected &&
+                      sessionStats.hasCompletedSession;
                   final connectingNotice =
                       liveState.isConnecting ? liveState.errorMessage : null;
                   final content = Column(
@@ -599,7 +602,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                   ],
                                   const SizedBox(height: 8),
                                   Text(
-                                    '非公式ツールです。ログイン情報・Cookieは取得しません。',
+                                    '非公式ツールです。ログイン情報・既存のブラウザCookieは取得しません。',
                                     style: TextStyle(
                                       color:
                                           Colors.white.withValues(alpha: 0.58),
@@ -614,16 +617,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         ),
                       ),
                       SizedBox(height: sectionGap),
-                      if (!isLive &&
-                          !liveState.isConnecting &&
-                          !isKeyboardVisible &&
-                          sessionStats.hasCompletedSession) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight: summaryMaxHeight,
-                            ),
+                      if (showSessionSummary) ...[
+                        Flexible(
+                          flex: 3,
+                          fit: FlexFit.loose,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: SingleChildScrollView(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -642,7 +641,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         ),
                         SizedBox(height: sectionGap),
                       ],
-                      const Expanded(child: _CommentSection()),
+                      Expanded(
+                        flex: showSessionSummary ? 2 : 1,
+                        child: const _CommentSection(),
+                      ),
                     ],
                   );
 
@@ -1074,7 +1076,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           content: const SingleChildScrollView(
             child: Text(
               'LiveVoice BoxはTikTok/ByteDanceの公式アプリではありません。\n\n'
-              'TikTokのログイン情報、パスワード、Cookie、ブラウザCookieは取得しません。\n\n'
+              'TikTokのログイン情報、パスワード、既存のブラウザCookieは取得しません。\n'
+              '公開LIVE接続時は、接続ライブラリが未認証接続用の一時的なttwid Cookieを取得します。LiveVoice Boxの設定としては保存しません。\n\n'
               '入力された配信IDは、公開LIVEへの接続にのみ使います。コメントとギフト情報は、読み上げ、効果音、バイブレーションのためにアプリ内で処理します。\n\n'
               '設定とID履歴は端末内に保存されます。配信サービス側の仕様変更、通信状態、OSのバックグラウンド制限により接続できない場合があります。',
             ),

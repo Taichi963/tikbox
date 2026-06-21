@@ -7,6 +7,7 @@ import 'package:tikbox/models/comment_model.dart';
 void main() {
   group('GiftRank', () {
     test('classifies gift value boundaries', () {
+      expect(_giftWithoutValue().giftRank, GiftRank.normal);
       expect(_gift(value: 99).giftRank, GiftRank.normal);
       expect(_gift(value: 100).giftRank, GiftRank.big);
       expect(_gift(value: 999).giftRank, GiftRank.big);
@@ -81,6 +82,19 @@ void main() {
         premiumGiftCount: 10,
       );
       expect(largeStats.score, 100);
+    });
+
+    test('calculates duration and supports an empty completed session', () {
+      final startedAt = DateTime(2026, 1, 1, 12);
+      final completed = SessionStats(startedAt: startedAt).finish(
+        startedAt.add(const Duration(minutes: 1, seconds: 30)),
+      );
+
+      expect(completed.lastDuration, const Duration(minutes: 1, seconds: 30));
+      expect(completed.commentCount, 0);
+      expect(completed.giftCount, 0);
+      expect(completed.hasCompletedSession, isTrue);
+      expect(completed.score, 2);
     });
 
     test('records one comment rush and all gift highlight types', () async {
@@ -158,6 +172,47 @@ void main() {
         contains(HighlightType.premiumGift),
       );
     });
+
+    test('prefers newer events within the same highlight rank', () {
+      final startedAt = DateTime(2026, 1, 1, 12);
+      var stats = SessionStats(startedAt: startedAt);
+      for (var index = 0; index < 6; index++) {
+        stats = stats.addHighlight(
+          HighlightEvent(
+            timestamp: startedAt.add(Duration(minutes: index)),
+            type: HighlightType.gift,
+            title: 'gift-$index',
+          ),
+        );
+      }
+
+      expect(stats.topHighlights.map((event) => event.title), [
+        'gift-1',
+        'gift-2',
+        'gift-3',
+        'gift-4',
+        'gift-5',
+      ]);
+    });
+
+    test('preparing a new attempt clears the previous result', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(mainProvider.notifier);
+      await notifier.ensureModerationReady();
+
+      notifier.startLive('streamer');
+      notifier.addComment(_comment());
+      notifier.stopLive();
+      expect(
+          container.read(mainProvider).sessionStats.hasCompletedSession, true);
+
+      notifier.prepareSession();
+      final prepared = container.read(mainProvider).sessionStats;
+      expect(prepared.hasCompletedSession, false);
+      expect(prepared.highlights, isEmpty);
+      expect(prepared.commentCount, 0);
+    });
   });
 }
 
@@ -181,5 +236,16 @@ CommentModel _gift({required int value, DateTime? createdAt}) {
     giftCount: 1,
     giftValue: value,
     createdAt: createdAt ?? DateTime(2026),
+  );
+}
+
+CommentModel _giftWithoutValue() {
+  return CommentModel(
+    id: 'gift-unknown',
+    userName: 'viewer',
+    text: '',
+    type: CommentType.gift,
+    giftName: 'Gift',
+    createdAt: DateTime(2026),
   );
 }
