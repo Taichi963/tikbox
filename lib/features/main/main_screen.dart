@@ -35,6 +35,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _blockedWordController = TextEditingController();
   List<String> _savedUsernames = const [];
+  Timer? _loadingTimer;
+  double _loadingProgress = 0;
+  bool _showConnectionLoading = false;
 
   @override
   void initState() {
@@ -44,9 +47,68 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   void dispose() {
+    _loadingTimer?.cancel();
     _usernameController.dispose();
     _blockedWordController.dispose();
     super.dispose();
+  }
+
+  void _startConnectionLoading() {
+    _loadingTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loadingProgress = 0;
+      _showConnectionLoading = true;
+    });
+    _loadingTimer = Timer.periodic(const Duration(milliseconds: 450), (_) {
+      if (!mounted || _loadingProgress >= 0.94) {
+        return;
+      }
+      setState(() {
+        final increment = _loadingProgress < 0.45
+            ? 0.035
+            : _loadingProgress < 0.75
+                ? 0.018
+                : _loadingProgress < 0.9
+                    ? 0.007
+                    : 0.002;
+        _loadingProgress =
+            (_loadingProgress + increment).clamp(0.0, 0.94).toDouble();
+      });
+    });
+  }
+
+  void _completeConnectionLoading() {
+    _loadingTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _loadingProgress = 1;
+      _showConnectionLoading = true;
+    });
+    _loadingTimer = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showConnectionLoading = false;
+      });
+    });
+  }
+
+  void _stopConnectionLoading() {
+    _loadingTimer?.cancel();
+    _loadingTimer = null;
+    if (!mounted || !_showConnectionLoading) {
+      return;
+    }
+    setState(() {
+      _loadingProgress = 0;
+      _showConnectionLoading = false;
+    });
   }
 
   Future<void> _restoreSavedUsernames() async {
@@ -285,6 +347,21 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final ttsSettings = ref.watch(ttsSettingsProvider);
 
     ref.listen<LiveState>(liveProvider, (previous, next) {
+      final wasConnecting = previous?.isConnecting ?? false;
+      if (!wasConnecting && next.isConnecting) {
+        _startConnectionLoading();
+      } else if (wasConnecting && !next.isConnecting) {
+        if (next.wsStatus == WsStatus.connected) {
+          _completeConnectionLoading();
+        } else {
+          _stopConnectionLoading();
+        }
+      } else if (!next.isConnecting &&
+          next.wsStatus != WsStatus.connected &&
+          _showConnectionLoading) {
+        _stopConnectionLoading();
+      }
+
       final becameConnected = previous?.wsStatus != WsStatus.connected &&
           next.wsStatus == WsStatus.connected;
       if (!becameConnected) {
@@ -430,10 +507,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                       ),
                                     ],
                                   ),
-                                  if (liveState.isConnecting) ...[
+                                  if (_showConnectionLoading) ...[
                                     const SizedBox(height: 16),
-                                    _ConnectingHintCard(
-                                      message: connectingNotice,
+                                    _ConnectionLoadingLogo(
+                                      progress: _loadingProgress,
+                                      message: liveState.isConnecting
+                                          ? connectingNotice
+                                          : null,
                                     ),
                                   ],
                                   if (!liveState.isConnecting &&
@@ -1249,54 +1329,65 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _ConnectingHintCard extends StatelessWidget {
+class _ConnectionLoadingLogo extends StatelessWidget {
+  final double progress;
   final String? message;
 
-  const _ConnectingHintCard({this.message});
+  const _ConnectionLoadingLogo({
+    required this.progress,
+    this.message,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFFFC64C);
+    final safeProgress = progress.clamp(0.0, 1.0).toDouble();
+    final isComplete = safeProgress >= 1;
+    final accent =
+        isComplete ? const Color(0xFF58F5D1) : const Color(0xFFFFC64C);
+    final percent = (safeProgress * 100).round();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: accent.withValues(alpha: 0.28)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 34,
-            height: 34,
+            width: 76,
+            height: 76,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accent.withValues(alpha: 0.14),
-                    border: Border.all(color: accent.withValues(alpha: 0.34)),
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: safeProgress,
+                    strokeWidth: 5,
+                    strokeCap: StrokeCap.round,
+                    color: accent,
+                    backgroundColor: accent.withValues(alpha: 0.14),
                   ),
                 ),
-                const Icon(
-                  Icons.sensors_rounded,
-                  color: accent,
-                  size: 18,
-                ),
-                Positioned(
-                  top: 5,
-                  right: 5,
-                  child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFFFFE0A3),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isComplete ? Icons.check_rounded : Icons.mic_rounded,
+                      color: accent,
+                      size: 22,
                     ),
-                  ),
+                    Text(
+                      '$percent%',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1307,9 +1398,9 @@ class _ConnectingHintCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  '接続中',
-                  style: TextStyle(
+                Text(
+                  isComplete ? '接続しました' : '接続しています...',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
@@ -1318,7 +1409,10 @@ class _ConnectingHintCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  message ?? '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
+                  isComplete
+                      ? '配信ルームへの接続が完了しました。'
+                      : message ??
+                          '配信ルームを探しています。時間がかかる場合はID・配信中か・通信環境を確認してください。',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.68),
                     fontSize: 11,
