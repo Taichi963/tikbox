@@ -49,6 +49,38 @@ class LiveState {
   }
 }
 
+class LikeRushTracker {
+  static const Duration window = Duration(seconds: 30);
+  static const int threshold = 100;
+
+  DateTime? _windowStartedAt;
+  int _likeCount = 0;
+
+  int get likeCount => _likeCount;
+
+  bool addIncrement(int increment, DateTime now) {
+    if (increment <= 0) {
+      return false;
+    }
+
+    final startedAt = _windowStartedAt;
+    if (startedAt == null ||
+        now.isBefore(startedAt) ||
+        now.difference(startedAt) >= window) {
+      _windowStartedAt = now;
+      _likeCount = 0;
+    }
+
+    _likeCount += increment;
+    return _likeCount >= threshold;
+  }
+
+  void reset() {
+    _windowStartedAt = null;
+    _likeCount = 0;
+  }
+}
+
 class LiveNotifier extends Notifier<LiveState> {
   static const int _maxAutoReconnectAttempts = 6;
   static const int _maxReconnectDelaySeconds = 16;
@@ -76,6 +108,7 @@ class LiveNotifier extends Notifier<LiveState> {
 
   DateTime? _lastGiftTime;
   int _comboStreak = 0;
+  final LikeRushTracker _likeRushTracker = LikeRushTracker();
 
   @override
   LiveState build() {
@@ -110,6 +143,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _manualStopRequested = false;
     _resetReconnectState();
     _resetGiftComboState();
+    _resetEngagementSoundState();
 
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
@@ -139,6 +173,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _manualStopRequested = false;
     _resetReconnectState();
     _resetGiftComboState();
+    _resetEngagementSoundState();
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
@@ -163,6 +198,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _cancelConnectAttemptTimers();
     _autoReconnectAttempts = 0;
     _resetGiftComboState();
+    _resetEngagementSoundState();
     _username = null;
     _connectRequestedAt = null;
     final previousClient = _client;
@@ -307,7 +343,7 @@ class LiveNotifier extends Notifier<LiveState> {
       if (_disposed || !identical(_client, client)) return;
       _cancelConnectAttemptTimers();
       AppLogger.error(
-        'TikTok client error event for @$username data=${evt.data}');
+          'TikTok client error event for @$username data=${evt.data}');
       _handleStatusError(
         evt.data?['error']?.toString() ?? '接続できませんでした。ID・配信中か・通信環境を確認してください。',
       );
@@ -368,7 +404,43 @@ class LiveNotifier extends Notifier<LiveState> {
         repeatCount,
         diamondCount,
         diamondTotal,
+        userKeyCandidate: userKeyCandidate,
       );
+    });
+
+    client.on(EventType.follow, (evt) {
+      if (_disposed || _manualStopRequested || !identical(_client, client)) {
+        return;
+      }
+      AppLogger.info('Follow event received');
+      ref.read(mainProvider.notifier).recordFollow(DateTime.now());
+      unawaited(effectSoundService.playFollowSound());
+    });
+
+    client.on(EventType.like, (evt) {
+      if (_disposed || _manualStopRequested || !identical(_client, client)) {
+        return;
+      }
+      final data = evt.data;
+      if (data == null) {
+        return;
+      }
+      final increment = _toPositiveInt(data['count']);
+      if (increment == null) {
+        AppLogger.info('Like event ignored: positive count is unavailable');
+        return;
+      }
+
+      ref.read(mainProvider.notifier).recordLikes(increment);
+      final isRush = _likeRushTracker.addIncrement(increment, DateTime.now());
+      AppLogger.info(
+        'Like event received: increment=$increment '
+        'windowTotal=${_likeRushTracker.likeCount}',
+      );
+      if (isRush && effectSoundService.canPlayLikeRushSoundNow) {
+        ref.read(mainProvider.notifier).recordLikeRush(DateTime.now());
+        unawaited(effectSoundService.playLikeRushSound());
+      }
     });
 
     final connectCallElapsedMs = _connectRequestedAt == null
@@ -572,13 +644,9 @@ class LiveNotifier extends Notifier<LiveState> {
     return ttsService.hasSpeakableText(ttsText) ? ttsText : null;
   }
 
-  void _handleGiftNative(
-    String userName,
-    String giftName,
-    int? repeatCount,
-    int? diamondCount,
-    int? diamondTotal,
-  ) {
+  void _handleGiftNative(String userName, String giftName, int? repeatCount,
+      int? diamondCount, int? diamondTotal,
+      {required ({String source, String? value}) userKeyCandidate}) {
     if (userName.isEmpty) return;
 
     final resolvedRepeatCount = repeatCount ?? 1;
@@ -607,6 +675,9 @@ class LiveNotifier extends Notifier<LiveState> {
       giftName: giftName,
       giftCount: resolvedRepeatCount,
       giftValue: totalValue ?? 0,
+      userKey: _giftRankingKey(userKeyCandidate, userName),
+      userKeySource: userKeyCandidate.source,
+      userReference: userKeyCandidate.value ?? userName,
       createdAt: DateTime.now(),
     );
 
@@ -650,6 +721,21 @@ class LiveNotifier extends Notifier<LiveState> {
       value: soundValue,
       voice: preferredGiftVoice,
     );
+  }
+
+  String _giftRankingKey(
+    ({String source, String? value}) candidate,
+    String fallbackName,
+  ) {
+    final reference = candidate.value?.trim();
+    if (reference != null && reference.isNotEmpty) {
+      final normalized = candidate.source == 'nickname'
+          ? UgcModerationService.normalizeText(reference)
+          : reference.toLowerCase();
+      return '${candidate.source}:$normalized';
+    }
+    final normalizedName = UgcModerationService.normalizeText(fallbackName);
+    return 'nickname:${normalizedName.isEmpty ? 'anonymous' : normalizedName}';
   }
 
   ({String source, String? value}) _resolveGiftUserKeyCandidate({
@@ -807,6 +893,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _stopDiagnosticHeartbeat();
     _connectRequestedAt = null;
     _resetGiftComboState();
+    _resetEngagementSoundState();
     final previousClient = _client;
     _client = null;
     _disconnectClientSafely(previousClient, 'dispose');
@@ -864,6 +951,7 @@ class LiveNotifier extends Notifier<LiveState> {
   void _handleReconnectExhausted(String reason) {
     _cancelReconnectTimer();
     _resetGiftComboState();
+    _resetEngagementSoundState();
     unawaited(ttsService.setConnectionActive(active: false));
     ref.read(mainProvider.notifier).stopLive();
     state = state.copyWith(
@@ -943,6 +1031,7 @@ class LiveNotifier extends Notifier<LiveState> {
       }
 
       _resetReconnectState();
+      _resetEngagementSoundState();
       unawaited(ttsService.setConnectionActive(active: false));
       ref.read(mainProvider.notifier).stopLive();
       _playConnectionFailureCue();
@@ -1026,6 +1115,11 @@ class LiveNotifier extends Notifier<LiveState> {
   void _resetGiftComboState() {
     _lastGiftTime = null;
     _comboStreak = 0;
+  }
+
+  void _resetEngagementSoundState() {
+    _likeRushTracker.reset();
+    effectSoundService.resetEngagementSoundCooldowns();
   }
 
   String _normalizeUsername(String input) {

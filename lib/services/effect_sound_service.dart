@@ -14,24 +14,36 @@ class EffectSoundService {
   static final EffectSoundService instance = EffectSoundService._();
 
   static const String _wavMimeType = 'audio/wav';
+  static const String _mp3MimeType = 'audio/mpeg';
   static const Duration _poolStopPadding = Duration(milliseconds: 24);
   static const int _mediumGiftValueThreshold = 10;
   static const int _highGiftValueThreshold = 100;
   static const int _mediumGiftSoundThreshold = 10;
   static const int _largeGiftSoundThreshold = 100;
   static const int _premiumGiftSoundThreshold = 1000;
+  static const Duration followSoundCooldown = Duration(seconds: 3);
+  static const Duration likeRushSoundCooldown = Duration(seconds: 15);
 
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
+  final Map<String, AudioPool> _assetPools = {};
 
   Future<void>? _initializeFuture;
   Future<void>? _primeFuture;
+  AudioContext? _audioContext;
   bool _initialized = false;
   bool _webAudioUnlocked = false;
   bool _giftSoundEnabled = true;
   double _volume = 0.85;
+  DateTime? _lastFollowSoundAt;
+  DateTime? _lastLikeRushSoundAt;
 
   final math.Random _random = math.Random();
+
+  Future<void> Function(String assetPath, double volume, Duration stopAfter)?
+      _debugAssetPlayback;
+  Future<void> Function(String toneName, double volume)?
+      _debugGeneratedPlayback;
 
   @visibleForTesting
   static Uint8List debugBuildCommentWav() => _buildCommentTone().bytes;
@@ -54,6 +66,32 @@ class EffectSoundService {
   @visibleForTesting
   static bool debugIsHeartMeGift(String? giftName) => _isHeartMeGift(giftName);
 
+  @visibleForTesting
+  static String? debugAssetPathForSoundKey(String soundKey) =>
+      _assetPathForSoundKey(soundKey);
+
+  @visibleForTesting
+  bool debugClaimFollowSoundAt(DateTime now) => _claimFollowSound(now);
+
+  @visibleForTesting
+  bool debugClaimLikeRushSoundAt(DateTime now) => _claimLikeRushSound(now);
+
+  @visibleForTesting
+  void debugSetPlaybackOverrides({
+    Future<void> Function(String assetPath, double volume, Duration stopAfter)?
+        assetPlayback,
+    Future<void> Function(String toneName, double volume)? generatedPlayback,
+  }) {
+    _debugAssetPlayback = assetPlayback;
+    _debugGeneratedPlayback = generatedPlayback;
+  }
+
+  @visibleForTesting
+  void debugResetPlaybackOverrides() {
+    _debugAssetPlayback = null;
+    _debugGeneratedPlayback = null;
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -72,12 +110,7 @@ class EffectSoundService {
 
   Future<void> _doInitialize() async {
     try {
-      final context = kIsWeb
-          ? null
-          : AudioContextConfig(
-              focus: AudioContextConfigFocus.mixWithOthers,
-              stayAwake: true,
-            ).build();
+      final context = _audioContext ??= _buildAudioContext();
 
       _tones['comment'] = _buildCommentTone();
       _tones['connection_success'] = _buildConnectionSuccessTone();
@@ -121,14 +154,28 @@ class EffectSoundService {
     } catch (error, stackTrace) {
       _initialized = false;
       final poolsToDispose = _pools.values.toList(growable: false);
+      final assetPoolsToDispose = _assetPools.values.toList(growable: false);
       _pools.clear();
+      _assetPools.clear();
       _tones.clear();
+      _audioContext = null;
       for (final pool in poolsToDispose) {
         try {
           await pool.dispose();
         } catch (disposeError, disposeStackTrace) {
           AppLogger.warning(
             'Effect sound pool dispose failed after initialization error',
+            error: disposeError,
+            stackTrace: disposeStackTrace,
+          );
+        }
+      }
+      for (final pool in assetPoolsToDispose) {
+        try {
+          await pool.dispose();
+        } catch (disposeError, disposeStackTrace) {
+          AppLogger.warning(
+            'Effect asset sound pool dispose failed after initialization error',
             error: disposeError,
             stackTrace: disposeStackTrace,
           );
@@ -142,6 +189,16 @@ class EffectSoundService {
     }
   }
 
+  AudioContext? _buildAudioContext() {
+    if (kIsWeb) {
+      return null;
+    }
+    return AudioContextConfig(
+      focus: AudioContextConfigFocus.mixWithOthers,
+      stayAwake: true,
+    ).build();
+  }
+
   Future<void> playComment() async {
     await _playTone('comment');
   }
@@ -152,6 +209,43 @@ class EffectSoundService {
 
   Future<void> playConnectionFailure() async {
     await _playTone('connection_failure');
+  }
+
+  Future<void> playFollowSound() async {
+    if (!_claimFollowSound(DateTime.now())) {
+      AppLogger.info('Follow sound skipped: cooldown active');
+      return;
+    }
+    try {
+      await _playTone('small_1', assetKey: 'follow');
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'Follow sound playback failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> playLikeRushSound() async {
+    if (!_claimLikeRushSound(DateTime.now())) {
+      AppLogger.info('Like rush sound skipped: cooldown active');
+      return;
+    }
+    try {
+      await _playTone('medium_combo_3_4', assetKey: 'like_rush');
+    } catch (error, stackTrace) {
+      AppLogger.warning(
+        'Like rush sound playback failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void resetEngagementSoundCooldowns() {
+    _lastFollowSoundAt = null;
+    _lastLikeRushSoundAt = null;
   }
 
   Future<void> playGiftEvent({
@@ -276,9 +370,35 @@ class EffectSoundService {
 
   double get volume => _volume;
 
+  bool get canPlayLikeRushSoundNow {
+    final lastPlayedAt = _lastLikeRushSoundAt;
+    return lastPlayedAt == null ||
+        DateTime.now().difference(lastPlayedAt) >= likeRushSoundCooldown;
+  }
+
   void setGiftSoundEnabled(bool enabled) {
     _giftSoundEnabled = enabled;
     AppLogger.info('Gift sound enabled set: $_giftSoundEnabled');
+  }
+
+  bool _claimFollowSound(DateTime now) {
+    final lastPlayedAt = _lastFollowSoundAt;
+    if (lastPlayedAt != null &&
+        now.difference(lastPlayedAt) < followSoundCooldown) {
+      return false;
+    }
+    _lastFollowSoundAt = now;
+    return true;
+  }
+
+  bool _claimLikeRushSound(DateTime now) {
+    final lastPlayedAt = _lastLikeRushSoundAt;
+    if (lastPlayedAt != null &&
+        now.difference(lastPlayedAt) < likeRushSoundCooldown) {
+      return false;
+    }
+    _lastLikeRushSoundAt = now;
+    return true;
   }
 
   Duration get commentTtsLeadIn => const Duration(milliseconds: 110);
@@ -296,10 +416,56 @@ class EffectSoundService {
   Future<void> _playTone(
     String toneName, {
     double volumeScale = 1.0,
+    String? assetKey,
+    bool preferAsset = true,
   }) async {
     final isGiftTone = toneName != 'comment';
     if (isGiftTone) {
       AppLogger.info('_playTone called: $toneName');
+    }
+
+    if (preferAsset) {
+      final soundKey = assetKey ?? _soundKeyForTone(toneName);
+      final assetPlayed = soundKey != null &&
+          await _tryPlayAssetTone(
+            toneName,
+            soundKey,
+            volumeScale: volumeScale,
+          );
+      if (assetPlayed) {
+        return;
+      }
+    }
+
+    await _playGeneratedTone(toneName, volumeScale: volumeScale);
+  }
+
+  Future<void> _playGeneratedTone(
+    String toneName, {
+    double volumeScale = 1.0,
+  }) async {
+    final isGiftTone = toneName != 'comment';
+    final resolvedVolume =
+        (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0);
+    if (resolvedVolume <= 0) {
+      if (isGiftTone) {
+        AppLogger.warning('_playTone skipped: volume is 0 for $toneName');
+      }
+      return;
+    }
+
+    final debugPlayback = _debugGeneratedPlayback;
+    if (debugPlayback != null) {
+      try {
+        await debugPlayback(toneName, resolvedVolume);
+      } catch (error, stackTrace) {
+        AppLogger.warning(
+          'Effect sound playback failed: $toneName',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+      return;
     }
 
     if (!_initialized) {
@@ -322,14 +488,6 @@ class EffectSoundService {
     }
 
     try {
-      final resolvedVolume =
-          (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0);
-      if (resolvedVolume <= 0) {
-        if (isGiftTone) {
-          AppLogger.warning('_playTone skipped: volume is 0 for $toneName');
-        }
-        return;
-      }
       if (isGiftTone) {
         AppLogger.info(
           '_playTone starting: $toneName volume=${resolvedVolume.toStringAsFixed(2)}',
@@ -360,6 +518,70 @@ class EffectSoundService {
     }
   }
 
+  Future<bool> _tryPlayAssetTone(
+    String toneName,
+    String soundKey, {
+    required double volumeScale,
+  }) async {
+    final assetPath = _assetPathForSoundKey(soundKey);
+    if (assetPath == null) {
+      return false;
+    }
+
+    final tone = _tones[toneName];
+    final stopAfter = (tone?.duration ?? const Duration(milliseconds: 600)) +
+        _poolStopPadding;
+    final resolvedVolume =
+        (_resolvedVolumeForTone(toneName) * volumeScale).clamp(0.0, 1.0);
+    if (resolvedVolume <= 0) {
+      AppLogger.warning('asset sound skipped: volume is 0 for $soundKey');
+      return true;
+    }
+
+    try {
+      final debugPlayback = _debugAssetPlayback;
+      if (debugPlayback != null) {
+        await debugPlayback(assetPath, resolvedVolume, stopAfter);
+        return true;
+      }
+
+      final pool = await _assetPoolForPath(
+        assetPath,
+        maxPlayers: toneName.contains('small') ? 6 : 3,
+      );
+      final stop = await pool.start(volume: resolvedVolume);
+      unawaited(
+        Future<void>.delayed(stopAfter, () async {
+          try {
+            await stop();
+          } catch (error, stackTrace) {
+            AppLogger.warning(
+              'Effect asset sound stop failed: $soundKey',
+              error: error,
+              stackTrace: stackTrace,
+            );
+          }
+        }),
+      );
+      return true;
+    } catch (error, stackTrace) {
+      if (_isAssetNotFoundError(error)) {
+        AppLogger.warning(
+          'asset sound not found, fallback to generated tone: $soundKey',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      } else {
+        AppLogger.warning(
+          'asset sound playback error, fallback to generated tone: $soundKey ($error)',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+      return false;
+    }
+  }
+
   Future<AudioPool> _createPool(
     Uint8List wavBytes, {
     required AudioContext? audioContext,
@@ -373,6 +595,70 @@ class EffectSoundService {
       playerMode: PlayerMode.lowLatency,
       audioContext: audioContext,
     );
+  }
+
+  Future<AudioPool> _assetPoolForPath(
+    String assetPath, {
+    required int maxPlayers,
+  }) {
+    final existing = _assetPools[assetPath];
+    if (existing != null) {
+      return Future.value(existing);
+    }
+
+    final future = AudioPool.create(
+      source: AssetSource(assetPath, mimeType: _mp3MimeType),
+      maxPlayers: maxPlayers,
+      minPlayers: 1,
+      playerMode: PlayerMode.lowLatency,
+      audioContext: _audioContext ??= _buildAudioContext(),
+    );
+
+    return future.then((pool) {
+      _assetPools[assetPath] = pool;
+      return pool;
+    });
+  }
+
+  static String? _soundKeyForTone(String toneName) {
+    if (toneName == 'comment' ||
+        toneName == 'connection_success' ||
+        toneName == 'connection_failure') {
+      return toneName;
+    }
+    if (toneName == 'rare_small' || toneName.startsWith('small')) {
+      return 'gift_small';
+    }
+    if (toneName == 'rare_medium' || toneName.startsWith('medium')) {
+      return 'gift_big';
+    }
+    if (toneName == 'rare_large' || toneName.startsWith('large')) {
+      return 'gift_big';
+    }
+    return null;
+  }
+
+  static String? _assetPathForSoundKey(String soundKey) {
+    return switch (soundKey) {
+      'comment' => 'audio/comment_pop.mp3',
+      'connection_success' => 'audio/connect_success.mp3',
+      'connection_failure' => 'audio/connect_error.mp3',
+      'gift_small' => 'audio/gift_small.mp3',
+      'gift_big' => 'audio/gift_big.mp3',
+      'gift_premium' => 'audio/gift_premium.mp3',
+      'follow' => 'audio/follow.mp3',
+      'like_rush' => 'audio/like_rush.mp3',
+      _ => null,
+    };
+  }
+
+  static bool _isAssetNotFoundError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('unable to load asset') ||
+        message.contains('asset not found') ||
+        message.contains('not found') ||
+        message.contains('404') ||
+        message.contains('does not exist');
   }
 
   Future<void> _doPrimeForPlayback() async {
@@ -545,19 +831,21 @@ class EffectSoundService {
   }
 
   Future<void> _playPremiumGift() async {
-    await _playTone('rare_large');
+    await _playTone('rare_large', assetKey: 'gift_premium');
   }
 
   void _playToneAfter(
     Duration delay,
     String toneName, {
     double volumeScale = 1.0,
+    bool preferAsset = false,
   }) {
     unawaited(
       Future<void>.delayed(delay, () async {
         await _playTone(
           toneName,
           volumeScale: volumeScale,
+          preferAsset: preferAsset,
         );
       }),
     );

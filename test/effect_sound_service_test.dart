@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tikbox/features/live/live_provider.dart';
 import 'package:tikbox/services/effect_sound_service.dart';
 
 void main() {
@@ -54,6 +55,264 @@ void main() {
       expect(EffectSoundService.debugIsHeartMeGift('ハートミー'), isTrue);
       expect(EffectSoundService.debugIsHeartMeGift('Rose'), isFalse);
       expect(EffectSoundService.debugIsHeartMeGift(null), isFalse);
+    });
+  });
+
+  group('EffectSoundService engagement cooldowns', () {
+    final service = EffectSoundService.instance;
+    final startedAt = DateTime(2026);
+
+    setUp(service.resetEngagementSoundCooldowns);
+    tearDown(service.resetEngagementSoundCooldowns);
+
+    test('suppresses follow sounds for three seconds', () {
+      expect(service.debugClaimFollowSoundAt(startedAt), isTrue);
+      expect(
+        service.debugClaimFollowSoundAt(
+          startedAt.add(const Duration(seconds: 2)),
+        ),
+        isFalse,
+      );
+      expect(
+        service.debugClaimFollowSoundAt(
+          startedAt.add(EffectSoundService.followSoundCooldown),
+        ),
+        isTrue,
+      );
+    });
+
+    test('suppresses like rush sounds for fifteen seconds', () {
+      expect(service.debugClaimLikeRushSoundAt(startedAt), isTrue);
+      expect(
+        service.debugClaimLikeRushSoundAt(
+          startedAt.add(const Duration(seconds: 14)),
+        ),
+        isFalse,
+      );
+      expect(
+        service.debugClaimLikeRushSoundAt(
+          startedAt.add(EffectSoundService.likeRushSoundCooldown),
+        ),
+        isTrue,
+      );
+    });
+
+    test('reset clears both cooldowns', () {
+      expect(service.debugClaimFollowSoundAt(startedAt), isTrue);
+      expect(service.debugClaimLikeRushSoundAt(startedAt), isTrue);
+
+      service.resetEngagementSoundCooldowns();
+
+      expect(service.debugClaimFollowSoundAt(startedAt), isTrue);
+      expect(service.debugClaimLikeRushSoundAt(startedAt), isTrue);
+    });
+  });
+
+  group('EffectSoundService asset playback fallback', () {
+    final service = EffectSoundService.instance;
+
+    setUp(() {
+      service.resetEngagementSoundCooldowns();
+      service.debugResetPlaybackOverrides();
+      service.setGiftSoundEnabled(true);
+      service.setVolume(0.85);
+    });
+
+    tearDown(() {
+      service.resetEngagementSoundCooldowns();
+      service.debugResetPlaybackOverrides();
+      service.setGiftSoundEnabled(true);
+      service.setVolume(0.85);
+    });
+
+    test('maps sound keys to bundled asset paths', () {
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('comment'),
+        'audio/comment_pop.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('gift_small'),
+        'audio/gift_small.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('gift_big'),
+        'audio/gift_big.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('gift_premium'),
+        'audio/gift_premium.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('follow'),
+        'audio/follow.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('like_rush'),
+        'audio/like_rush.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('connection_success'),
+        'audio/connect_success.mp3',
+      );
+      expect(
+        EffectSoundService.debugAssetPathForSoundKey('connection_failure'),
+        'audio/connect_error.mp3',
+      );
+    });
+
+    test('asset success does not call generated fallback', () async {
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetPaths.add(assetPath);
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedTones.add(toneName);
+        },
+      );
+
+      await service.playFollowSound();
+
+      expect(assetPaths, ['audio/follow.mp3']);
+      expect(generatedTones, isEmpty);
+    });
+
+    test('asset failure falls back to generated tone once', () async {
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetPaths.add(assetPath);
+          throw StateError('Unable to load asset: $assetPath');
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedTones.add(toneName);
+        },
+      );
+
+      await service.playFollowSound();
+
+      expect(assetPaths, ['audio/follow.mp3']);
+      expect(generatedTones, ['small_1']);
+    });
+
+    test('asset path is selected for gift tiers without changing rank logic',
+        () async {
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetPaths.add(assetPath);
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedTones.add(toneName);
+        },
+      );
+
+      await service.playGiftEvent(value: 1, comboStreak: 1, giftName: 'Rose');
+      await service.playGiftEvent(
+        value: 1000,
+        comboStreak: 1,
+        giftName: 'Rose',
+      );
+
+      expect(assetPaths, contains('audio/gift_small.mp3'));
+      expect(assetPaths, contains('audio/gift_premium.mp3'));
+      expect(generatedTones, isEmpty);
+    });
+
+    test('volume is applied to both asset and generated playback paths',
+        () async {
+      final assetVolumes = <double>[];
+      final generatedVolumes = <double>[];
+
+      service.setVolume(0.5);
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetVolumes.add(volume);
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedVolumes.add(volume);
+        },
+      );
+
+      await service.playComment();
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetVolumes.add(volume);
+          throw StateError('Unable to load asset: $assetPath');
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedVolumes.add(volume);
+        },
+      );
+
+      await service.playComment();
+
+      expect(assetVolumes, [
+        closeTo(0.34, 0.001),
+        closeTo(0.34, 0.001),
+      ]);
+      expect(generatedVolumes, [closeTo(0.34, 0.001)]);
+    });
+
+    test('follow cooldown still suppresses repeated asset playback', () async {
+      final assetPaths = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetPaths.add(assetPath);
+        },
+      );
+
+      await service.playFollowSound();
+      await service.playFollowSound();
+
+      expect(assetPaths, ['audio/follow.mp3']);
+    });
+  });
+
+  group('LikeRushTracker', () {
+    final startedAt = DateTime(2026);
+
+    test('detects one hundred likes inside thirty seconds', () {
+      final tracker = LikeRushTracker();
+
+      expect(tracker.addIncrement(60, startedAt), isFalse);
+      expect(
+        tracker.addIncrement(40, startedAt.add(const Duration(seconds: 20))),
+        isTrue,
+      );
+      expect(tracker.likeCount, 100);
+    });
+
+    test('starts a new bucket after thirty seconds', () {
+      final tracker = LikeRushTracker();
+
+      expect(tracker.addIncrement(90, startedAt), isFalse);
+      expect(
+        tracker.addIncrement(10, startedAt.add(LikeRushTracker.window)),
+        isFalse,
+      );
+      expect(tracker.likeCount, 10);
+    });
+
+    test('ignores non-positive increments and resets safely', () {
+      final tracker = LikeRushTracker();
+
+      expect(tracker.addIncrement(-1, startedAt), isFalse);
+      expect(tracker.likeCount, 0);
+      expect(tracker.addIncrement(100, startedAt), isTrue);
+
+      tracker.reset();
+
+      expect(tracker.likeCount, 0);
+      expect(tracker.addIncrement(1, startedAt), isFalse);
     });
   });
 }

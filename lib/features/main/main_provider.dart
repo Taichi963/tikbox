@@ -14,6 +14,8 @@ const String _customBlockedTermsPreferenceKey = 'tikbox_custom_ng_words_v1';
 enum HighlightType {
   commentRush,
   gift,
+  follow,
+  likeRush,
   bigGift,
   premiumGift,
 }
@@ -30,11 +32,27 @@ class HighlightEvent {
   });
 
   int get priority => switch (type) {
-        HighlightType.premiumGift => 4,
-        HighlightType.bigGift => 3,
+        HighlightType.premiumGift => 6,
+        HighlightType.bigGift => 5,
+        HighlightType.likeRush => 4,
+        HighlightType.follow => 3,
         HighlightType.gift => 2,
         HighlightType.commentRush => 1,
       };
+}
+
+class GiftRankingEntry {
+  final String userKey;
+  final String displayName;
+  final int points;
+  final DateTime reachedAt;
+
+  const GiftRankingEntry({
+    required this.userKey,
+    required this.displayName,
+    required this.points,
+    required this.reachedAt,
+  });
 }
 
 class SessionStats {
@@ -44,6 +62,10 @@ class SessionStats {
   final int giftCount;
   final int bigGiftCount;
   final int premiumGiftCount;
+  final int followCount;
+  final int likeCount;
+  final int likeRushCount;
+  final Map<String, GiftRankingEntry> giftRanking;
   final List<HighlightEvent> highlights;
 
   const SessionStats({
@@ -53,12 +75,21 @@ class SessionStats {
     this.giftCount = 0,
     this.bigGiftCount = 0,
     this.premiumGiftCount = 0,
+    this.followCount = 0,
+    this.likeCount = 0,
+    this.likeRushCount = 0,
+    this.giftRanking = const {},
     this.highlights = const [],
   });
 
   bool get hasCompletedSession =>
       startedAt == null &&
-      (lastDuration > Duration.zero || commentCount > 0 || giftCount > 0);
+      (lastDuration > Duration.zero ||
+          commentCount > 0 ||
+          giftCount > 0 ||
+          followCount > 0 ||
+          likeCount > 0 ||
+          likeRushCount > 0);
 
   int get score {
     final liveMinutes = lastDuration.inMinutes;
@@ -66,6 +97,8 @@ class SessionStats {
             giftCount * 5 +
             bigGiftCount * 15 +
             premiumGiftCount * 30 +
+            followCount * 8 +
+            likeRushCount * 10 +
             liveMinutes * 2)
         .clamp(0, 100)
         .toInt();
@@ -79,8 +112,28 @@ class SessionStats {
             : b.timestamp.compareTo(a.timestamp);
       });
     final topFive = selected.take(5).toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      ..sort((a, b) {
+        if (_isSameMinute(a.timestamp, b.timestamp)) {
+          return b.priority.compareTo(a.priority);
+        }
+        return a.timestamp.compareTo(b.timestamp);
+      });
     return List.unmodifiable(topFive);
+  }
+
+  List<GiftRankingEntry> get topGiftRanking {
+    final ranked = giftRanking.values.toList()
+      ..sort((a, b) {
+        final pointsOrder = b.points.compareTo(a.points);
+        if (pointsOrder != 0) {
+          return pointsOrder;
+        }
+        final reachedOrder = a.reachedAt.compareTo(b.reachedAt);
+        return reachedOrder != 0
+            ? reachedOrder
+            : a.userKey.compareTo(b.userKey);
+      });
+    return List.unmodifiable(ranked.take(3));
   }
 
   SessionStats record(CommentModel comment) {
@@ -95,9 +148,27 @@ class SessionStats {
         giftCount: giftCount,
         bigGiftCount: bigGiftCount,
         premiumGiftCount: premiumGiftCount,
+        followCount: followCount,
+        likeCount: likeCount,
+        likeRushCount: likeRushCount,
+        giftRanking: giftRanking,
         highlights: highlights,
       );
     }
+    final rankingKey = _giftRankingKey(comment);
+    final rankingPoints = comment.giftValue > 0
+        ? comment.giftValue
+        : (comment.giftCount ?? 0) > 0
+            ? comment.giftCount!
+            : 1;
+    final currentRanking = giftRanking[rankingKey];
+    final updatedRanking = Map<String, GiftRankingEntry>.from(giftRanking)
+      ..[rankingKey] = GiftRankingEntry(
+        userKey: rankingKey,
+        displayName: _giftDisplayName(comment.userName),
+        points: (currentRanking?.points ?? 0) + rankingPoints,
+        reachedAt: comment.createdAt,
+      );
     return SessionStats(
       startedAt: startedAt,
       lastDuration: lastDuration,
@@ -106,7 +177,88 @@ class SessionStats {
       bigGiftCount: bigGiftCount + (comment.giftRank == GiftRank.big ? 1 : 0),
       premiumGiftCount:
           premiumGiftCount + (comment.giftRank == GiftRank.premium ? 1 : 0),
+      followCount: followCount,
+      likeCount: likeCount,
+      likeRushCount: likeRushCount,
+      giftRanking: Map.unmodifiable(updatedRanking),
       highlights: highlights,
+    );
+  }
+
+  SessionStats recordFollow(DateTime timestamp) {
+    if (startedAt == null) {
+      return this;
+    }
+    final updated = SessionStats(
+      startedAt: startedAt,
+      lastDuration: lastDuration,
+      commentCount: commentCount,
+      giftCount: giftCount,
+      bigGiftCount: bigGiftCount,
+      premiumGiftCount: premiumGiftCount,
+      followCount: followCount + 1,
+      likeCount: likeCount,
+      likeRushCount: likeRushCount,
+      giftRanking: giftRanking,
+      highlights: highlights,
+    );
+    if (_hasHighlightInMinute(HighlightType.follow, timestamp)) {
+      return updated;
+    }
+    return updated.addHighlight(
+      HighlightEvent(
+        timestamp: timestamp,
+        type: HighlightType.follow,
+        title: 'フォロー獲得',
+      ),
+    );
+  }
+
+  SessionStats recordLikes(int increment) {
+    if (startedAt == null || increment <= 0) {
+      return this;
+    }
+    return SessionStats(
+      startedAt: startedAt,
+      lastDuration: lastDuration,
+      commentCount: commentCount,
+      giftCount: giftCount,
+      bigGiftCount: bigGiftCount,
+      premiumGiftCount: premiumGiftCount,
+      followCount: followCount,
+      likeCount: likeCount + increment,
+      likeRushCount: likeRushCount,
+      giftRanking: giftRanking,
+      highlights: highlights,
+    );
+  }
+
+  SessionStats recordLikeRush(DateTime timestamp) {
+    if (startedAt == null) {
+      return this;
+    }
+    final updated = SessionStats(
+      startedAt: startedAt,
+      lastDuration: lastDuration,
+      commentCount: commentCount,
+      giftCount: giftCount,
+      bigGiftCount: bigGiftCount,
+      premiumGiftCount: premiumGiftCount,
+      followCount: followCount,
+      likeCount: likeCount,
+      likeRushCount: likeRushCount + 1,
+      giftRanking: giftRanking,
+      highlights: highlights,
+    );
+    if (_hasHighlightInMinute(HighlightType.likeRush, timestamp)) {
+      return updated;
+    }
+    return updated.addHighlight(
+      HighlightEvent(
+        timestamp: timestamp,
+        type: HighlightType.likeRush,
+        title: 'いいねラッシュ',
+      ),
     );
   }
 
@@ -124,6 +276,10 @@ class SessionStats {
       giftCount: giftCount,
       bigGiftCount: bigGiftCount,
       premiumGiftCount: premiumGiftCount,
+      followCount: followCount,
+      likeCount: likeCount,
+      likeRushCount: likeRushCount,
+      giftRanking: giftRanking,
       highlights: List.unmodifiable(bounded.take(20)),
     );
   }
@@ -140,8 +296,41 @@ class SessionStats {
       giftCount: giftCount,
       bigGiftCount: bigGiftCount,
       premiumGiftCount: premiumGiftCount,
+      followCount: followCount,
+      likeCount: likeCount,
+      likeRushCount: likeRushCount,
+      giftRanking: giftRanking,
       highlights: highlights,
     );
+  }
+
+  static String _giftRankingKey(CommentModel comment) {
+    final existingKey = comment.userKey?.trim();
+    if (existingKey != null && existingKey.isNotEmpty) {
+      return existingKey;
+    }
+    final normalizedName = UgcModerationService.normalizeText(comment.userName);
+    return 'nickname:${normalizedName.isEmpty ? 'anonymous' : normalizedName}';
+  }
+
+  static String _giftDisplayName(String userName) {
+    final trimmed = userName.trim();
+    return trimmed.isEmpty || trimmed == '?' ? '匿名' : trimmed;
+  }
+
+  bool _hasHighlightInMinute(HighlightType type, DateTime timestamp) {
+    return highlights.any(
+      (event) =>
+          event.type == type && _isSameMinute(event.timestamp, timestamp),
+    );
+  }
+
+  static bool _isSameMinute(DateTime a, DateTime b) {
+    return a.year == b.year &&
+        a.month == b.month &&
+        a.day == b.day &&
+        a.hour == b.hour &&
+        a.minute == b.minute;
   }
 }
 
@@ -292,6 +481,24 @@ class MainNotifier extends Notifier<MainState> {
     state = state.copyWith(
       comments: updated.length > 200 ? updated.take(200).toList() : updated,
       sessionStats: sessionStats,
+    );
+  }
+
+  void recordFollow(DateTime timestamp) {
+    state = state.copyWith(
+      sessionStats: state.sessionStats.recordFollow(timestamp),
+    );
+  }
+
+  void recordLikes(int increment) {
+    state = state.copyWith(
+      sessionStats: state.sessionStats.recordLikes(increment),
+    );
+  }
+
+  void recordLikeRush(DateTime timestamp) {
+    state = state.copyWith(
+      sessionStats: state.sessionStats.recordLikeRush(timestamp),
     );
   }
 

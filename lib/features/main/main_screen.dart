@@ -1474,6 +1474,7 @@ class _SessionScoreCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const accent = Color(0xFF58F5D1);
     final duration = _formatDuration(stats.lastDuration);
+    final giftRanking = stats.topGiftRanking;
 
     return NeonPanel(
       glowColor: accent,
@@ -1527,6 +1528,79 @@ class _SessionScoreCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _SessionMetric(
+                  label: 'フォロー',
+                  value: '+${stats.followCount}',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SessionMetric(
+                  label: 'いいね',
+                  value: '+${stats.likeCount}',
+                ),
+              ),
+            ],
+          ),
+          if (giftRanking.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
+            const SizedBox(height: 10),
+            const Text(
+              'ギフトランキング',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (var index = 0; index < giftRanking.length; index++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      child: Text(
+                        '${index + 1}位',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        giftRanking[index].displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${giftRanking[index].points}pt',
+                      style: const TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -1594,12 +1668,16 @@ class _HighlightRow extends StatelessWidget {
     final accent = switch (event.type) {
       HighlightType.premiumGift => const Color(0xFFEF6CFF),
       HighlightType.bigGift => const Color(0xFFFFD95C),
+      HighlightType.likeRush => const Color(0xFFFF6B9D),
+      HighlightType.follow => const Color(0xFF72F6D0),
       HighlightType.gift => const Color(0xFFFFB54A),
       HighlightType.commentRush => const Color(0xFF58F5D1),
     };
     final icon = switch (event.type) {
       HighlightType.premiumGift => Icons.workspace_premium_rounded,
       HighlightType.bigGift => Icons.auto_awesome_rounded,
+      HighlightType.likeRush => Icons.favorite_rounded,
+      HighlightType.follow => Icons.person_add_alt_1_rounded,
       HighlightType.gift => Icons.card_giftcard_rounded,
       HighlightType.commentRush => Icons.forum_rounded,
     };
