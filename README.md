@@ -1,116 +1,192 @@
 # LiveVoice Box
 
-LiveVoice Box is an unofficial live-stream comment reading assistant for
-streamers. It reads public live comments aloud through the device's configured
-text-to-speech service, plays short gift feedback sounds, and supports
-user-started reading audio while the app is in the background.
+**Stay focused on your audience—not your chat.**
 
-## Important Notice
+LiveVoice Box is an unofficial live-stream comment reading assistant for streamers. It reads public LIVE comments aloud using the device's configured text-to-speech (TTS) service, plays short gift feedback sounds, and supports user-started reading audio while the app is running in the background.
 
-- LiveVoice Box is not an official app and is not affiliated with, endorsed by,
-  approved by, or sponsored by TikTok, ByteDance, or any live-streaming
-  platform.
-- The app does not ask for TikTok login credentials.
-- The app does not collect passwords or read existing browser, login, or TikTok
-  app cookies.
-- The bundled LIVE connection library obtains a temporary service-issued
-  `ttwid` cookie through an unauthenticated request for the public LIVE
-  connection. It is not a user login credential and LiveVoice Box does not save
-  it in SharedPreferences or an app database.
-- The app does not guarantee a public LIVE connection. Availability may vary
-  because of stream status, network conditions, service changes, operating
-  system restrictions, or device settings.
-- Users should use the app only for their own stream or a stream they are
-  authorized to support.
+The application is designed to help streamers interact with viewers without constantly looking at the chat, while keeping user settings and data on the device.
 
-## Main Features
+---
 
-- Public live-comment text-to-speech.
-- Gift sound and optional short vibration feedback.
-- Bronze, Silver, Gold, and Heart Me gift sound feedback.
-- Gift sound, vibration, voice, speed, pitch, and volume settings.
-- Saved stream ID history stored locally on the device.
-- Local blocked-word filtering and public LIVE user blocking.
-- Comment report preparation for the published support email. The user copies
-  the recipient, subject, and report body and sends it from their email app.
-- Android foreground service and iOS background audio for user-started reading
-  audio.
+# Important Notice
 
-## Privacy Summary
+* LiveVoice Box is **not an official application** and is **not affiliated with, endorsed by, approved by, or sponsored by TikTok, ByteDance, or any live-streaming platform.**
+* The app **does not request TikTok login credentials.**
+* The app **does not collect passwords** and **does not access existing browser, login, or TikTok app cookies.**
+* The bundled LIVE connection library retrieves a temporary, service-issued `ttwid` cookie while establishing a public LIVE connection. This value is **not a user login credential**, is **not tied to a user account**, and is **never stored** in SharedPreferences or any application database.
+* Public LIVE connectivity cannot be guaranteed. Availability depends on stream status, network conditions, operating-system behavior, platform-side changes, and device configuration.
+* Users must only use the application for their own stream or a stream they are authorized to support.
 
-LiveVoice Box uses the entered stream ID to connect to the selected public LIVE.
-Public comments, public user display names, and public gift events are received
-through the live connection and processed for display, reading, sound, and
-vibration.
+---
 
-Stored locally using SharedPreferences:
+# Main Features
 
-- app and TTS settings
-- gift sound and vibration settings
-- saved stream ID history
+* Read public LIVE comments aloud using the device's configured TTS engine
+* Play short gift feedback sounds with optional vibration
+* Support multiple gift feedback tiers (Bronze, Silver, Gold, Heart Me)
+* Configure voice, speech rate, pitch, and volume
+* Store stream ID history locally
+* Local blocked-word filtering
+* Local public LIVE user blocking
+* Prepare comment reports for sending through the user's own email application
+* Continue user-started reading audio using Android Foreground Service and iOS Background Audio
 
-The app does not include a LiveVoice Box-operated backend, account system,
-advertising SDK, or analytics SDK. Diagnostic operating-system logs may contain
-the entered stream ID, public user display names, gift information, and
-connection or audio state details.
+---
 
-The full current documentation is available in:
+# Privacy Summary
 
-- [Privacy Policy](docs/privacy.md)
-- [Terms of Use](docs/terms.md)
-- [Store Release Kit](docs/release_kit.md)
+LiveVoice Box connects to the public LIVE specified by the user.
 
-Submission information:
+Public comments, public display names, and public gift events are processed locally to provide:
 
-- Operator: `[OPERATOR_NAME]`
-- Support email: zeb0kui3ackwv4pft1us@gmail.com
-- Privacy Policy: https://taichi963.github.io/tikbox/privacy.html
-- Support: https://taichi963.github.io/tikbox/support.html
-- Terms: https://taichi963.github.io/tikbox/terms.html
+* Comment reading
+* Gift sounds
+* Optional vibration
+* User interface updates
 
-## Permissions And Background Audio
+The application **does not operate its own backend server**, and this information is **not transmitted to any LiveVoice Box-operated service.**
 
-Android permissions are used for:
+## Stored locally (SharedPreferences)
 
-- `INTERNET`: connect to the selected public LIVE.
-- `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MEDIA_PLAYBACK`: continue
-  user-started reading audio when the app is not in the foreground.
-- `POST_NOTIFICATIONS`: show the active reading notification on supported
-  Android versions.
-- `WAKE_LOCK`: reduce interruptions during an active reading session.
-- `VIBRATE`: provide optional short gift vibration feedback.
+* Application settings
+* TTS settings
+* Gift sound settings
+* Gift vibration settings
+* Saved stream ID history
 
-iOS background audio is used to continue user-started reading audio during an
-active session. It must not be described as hidden monitoring or a silent
-background keep-alive feature.
+## Not collected
 
-## Store Review Positioning
+* User accounts
+* Passwords
+* Login credentials
+* Browser cookies
+* Existing TikTok cookies
+* Advertising identifiers
+* Analytics data
 
-Recommended wording:
+Standard operating-system diagnostic logs may incidentally contain stream IDs, public display names, gift information, or connection/audio state. These logs are generated by the operating system and are **not collected by LiveVoice Box.**
 
-> LiveVoice Box is an unofficial tool for streamers that reads public live
-> comments aloud using the device's configured text-to-speech service. It does
-> not require TikTok login credentials and does not collect passwords or read
-> existing browser or login cookies. Background audio is used to continue
-> user-started comment reading during an active live session.
+---
+
+# Documentation
+
+* Privacy Policy
+  https://taichi963.github.io/tikbox/privacy.html
+
+* Terms of Use
+  https://taichi963.github.io/tikbox/terms.html
+
+* Support
+  https://taichi963.github.io/tikbox/support.html
+
+---
+
+# Support Information
+
+Operator
+
+```
+[OPERATOR_NAME]
+```
+
+Support Email
+
+```
+zeb0kui3ackwv4pft1us@gmail.com
+```
+
+---
+
+# Permissions and Background Audio
+
+| Permission                                             | Purpose                                                | If unavailable                                    |
+| ------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------- |
+| INTERNET                                               | Connect to the selected public LIVE                    | Live connection cannot be established             |
+| FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK | Continue user-started reading audio while backgrounded | Reading stops after leaving the foreground        |
+| POST_NOTIFICATIONS                                     | Display the active reading notification (Android 13+)  | Reading continues but notification is unavailable |
+| WAKE_LOCK                                              | Reduce interruptions during active reading             | Reading may be interrupted more frequently        |
+| VIBRATE                                                | Optional gift vibration feedback                       | Vibration feedback is unavailable                 |
+
+On iOS, Background Audio is used **only** to continue user-started reading during an active session.
+
+It must **not** be described as:
+
+* hidden monitoring
+* silent tracking
+* hidden background processing
+* silent keep-alive behavior
+
+The background audio session exists solely to continue user-requested comment reading.
+
+---
+
+# Store Review Positioning
+
+Recommended description:
+
+> LiveVoice Box is an unofficial tool for streamers that reads public LIVE comments aloud using the device's configured text-to-speech service. It does not require TikTok login credentials, does not collect passwords, and does not access existing browser or login cookies. Background audio is used only to continue user-started comment reading during an active live session.
 
 Avoid wording that implies:
 
-- official partnership, approval, or integration
-- guaranteed public LIVE connection
-- account login, cookie extraction, or browser-cookie access
-- viewer tracking, surveillance, or identity matching
-- hidden background processing
+| Avoid                           | Reason                                                                       |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| Official partnership            | The application is unofficial                                                |
+| Guaranteed LIVE connection      | Public LIVE availability cannot be guaranteed                                |
+| Login or cookie extraction      | The application never accesses login credentials or existing browser cookies |
+| Viewer tracking or surveillance | Only public LIVE data required for reading is processed                      |
+| Hidden background processing    | Background audio is user-initiated and visible                               |
 
-## Release Checks
+---
 
-Before store submission, confirm:
+# Development
 
-- `flutter analyze --no-pub` has no issues.
-- Android signed AAB and iOS Archive/IPA builds succeed.
-- TestFlight and Android release builds pass physical-device tests.
-- Screen-off reading, foreground notification, audio interruption, Bluetooth,
-  AirPods, vibration, real gifts, reconnect, and Stop behavior are verified.
-- A public HTTPS privacy-policy URL and current support contact are available.
-- App Store Connect privacy responses, Google Play Data safety responses, and
-  the Google Play foreground-service declaration match the release build.
+Basic verification commands:
+
+```bash
+flutter analyze --no-pub
+flutter test --no-pub
+flutter build apk --release
+flutter build appbundle --release --no-tree-shake-icons
+```
+
+---
+
+# Release Checklist
+
+## Code Quality
+
+* [ ] `flutter analyze --no-pub` reports no issues
+* [ ] All automated tests pass
+* [ ] `git diff --check` reports no whitespace errors
+
+## Build Verification
+
+* [ ] Android Release APK builds successfully
+* [ ] Android Release AAB builds successfully
+* [ ] iOS Archive / IPA builds successfully
+
+## Physical Device Verification
+
+* [ ] Android release build passes on a real device
+* [ ] iPhone release/TestFlight build passes on a real device
+* [ ] Screen-off reading works correctly
+* [ ] Foreground notification behaves correctly
+* [ ] Bluetooth and AirPods routing works correctly
+* [ ] Audio interruption recovery works correctly
+* [ ] Gift vibration works correctly
+* [ ] Reconnect behavior is verified
+* [ ] Stop immediately terminates reading and audio playback
+
+## Store Submission
+
+* [ ] Privacy Policy URL is publicly accessible
+* [ ] Support contact information is current
+* [ ] App Store Connect privacy responses match the release build
+* [ ] Google Play Data Safety matches the release build
+* [ ] Google Play Foreground Service declaration matches the implementation
+
+---
+
+# Disclaimer
+
+LiveVoice Box is an independent, unofficial utility for reading public LIVE comments. All trademarks, product names, and platform names belong to their respective owners.
