@@ -146,6 +146,15 @@ void main() {
       expect(completed.score, 2);
     });
 
+    test('finish clamps a negative elapsed duration to zero', () {
+      final startedAt = DateTime(2026, 1, 1, 12);
+      final completed = SessionStats(startedAt: startedAt).finish(
+        startedAt.subtract(const Duration(seconds: 30)),
+      );
+      expect(completed.lastDuration, Duration.zero);
+      expect(completed.hasCompletedSession, isFalse);
+    });
+
     test('records one comment rush and all gift highlight types', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);

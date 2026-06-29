@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -227,50 +227,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     return result;
   }
 
-  String _normalizeUsername(String input) {
-    final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
-    if (trimmed.isEmpty) {
-      return '';
-    }
+  String _normalizeUsername(String input) =>
+      UgcModerationService.normalizeTikTokUsername(input);
 
-    final uri = Uri.tryParse(trimmed);
-    if (uri != null && uri.hasScheme) {
-      if (uri.host.isEmpty) {
-        return '';
-      }
-      final host = uri.host.toLowerCase();
-      final isTikTokHost = host == 'tiktok.com' || host.endsWith('.tiktok.com');
-      if (!isTikTokHost) {
-        return '';
-      }
-      for (final segment in uri.pathSegments) {
-        if (segment.startsWith('@')) {
-          return segment.replaceFirst(RegExp(r'^@+'), '').trim();
-        }
-      }
-      return '';
-    }
-
-    final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
-    final withoutHost = withoutQuery.replaceFirst(
-      RegExp(r'^(https?://)?(www\.)?tiktok\.com/?', caseSensitive: false),
-      '',
-    );
-    final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
-    return withoutAt.split('/').first.replaceAll('@', '').trim();
-  }
-
-  bool _isLikelyTikTokUsername(String username) {
-    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(username);
-  }
-
-  String _voiceKey(Map<String, String>? voice) {
-    if (voice == null || voice.isEmpty) {
-      return '';
-    }
-    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
-        '${voice['identifier'] ?? ''}';
-  }
+  bool _isLikelyTikTokUsername(String username) =>
+      UgcModerationService.isLikelyTikTokUsername(username);
 
   String _voiceLabel(Map<String, String> voice, int index) {
     final name = (voice['name'] ?? '').trim();
@@ -351,7 +312,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     ref.listen<LiveState>(liveProvider, (previous, next) {
       final wasConnecting = previous?.isConnecting ?? false;
       if (!wasConnecting && next.isConnecting) {
-        ref.read(mainProvider.notifier).prepareSession();
+        if (!next.isAutoReconnecting) {
+          ref.read(mainProvider.notifier).prepareSession();
+        }
         _startConnectionLoading();
       } else if (wasConnecting && !next.isConnecting) {
         if (next.wsStatus == WsStatus.connected) {
@@ -401,7 +364,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                   final showSessionSummary = !isLive &&
                       !liveState.isConnecting &&
                       !isKeyboardVisible &&
-                      liveState.wsStatus == WsStatus.disconnected &&
+                      (liveState.wsStatus == WsStatus.disconnected ||
+                          liveState.wsStatus == WsStatus.error) &&
                       sessionStats.hasCompletedSession;
                   final connectingNotice =
                       liveState.isConnecting ? liveState.errorMessage : null;
@@ -662,7 +626,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Future<void> _openSettings(BuildContext context) async {
     Map<String, String>? pendingCommentVoice =
         ref.read(ttsSettingsProvider).commentVoice;
-    var pendingCommentVoiceKey = _voiceKey(pendingCommentVoice);
+    var pendingCommentVoiceKey = pendingCommentVoice == null || pendingCommentVoice.isEmpty
+        ? ''
+        : TtsSettings.voiceKey(pendingCommentVoice);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -686,7 +652,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             );
             final moderationNotifier = ref.read(mainProvider.notifier);
             final availableVoices = current.availableVoices;
-            final availableVoiceKeys = availableVoices.map(_voiceKey).toSet();
+            final availableVoiceKeys = availableVoices.map(TtsSettings.voiceKey).toSet();
             final pendingVoiceValue = pendingCommentVoiceKey.isNotEmpty &&
                     availableVoiceKeys.contains(pendingCommentVoiceKey)
                 ? pendingCommentVoiceKey
@@ -846,7 +812,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                             .map((entry) {
                                           final voice = entry.value;
                                           return DropdownMenuItem<String>(
-                                            value: _voiceKey(voice),
+                                            value: TtsSettings.voiceKey(voice),
                                             child: Text(
                                               _voiceLabel(voice, entry.key + 1),
                                               overflow: TextOverflow.ellipsis,
@@ -870,7 +836,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                         }
                                         final selectedVoice =
                                             availableVoices.firstWhere(
-                                          (voice) => _voiceKey(voice) == value,
+                                          (voice) => TtsSettings.voiceKey(voice) == value,
                                           orElse: () =>
                                               const <String, String>{},
                                         );

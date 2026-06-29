@@ -27,6 +27,8 @@ class EffectSoundService {
   final Map<String, _GeneratedEffectTone> _tones = {};
   final Map<String, AudioPool> _pools = {};
   final Map<String, AudioPool> _assetPools = {};
+  final Map<String, Future<AudioPool>> _assetPoolFutures = {};
+  final Set<String> _missingAssetPaths = {};
 
   Future<void>? _initializeFuture;
   Future<void>? _primeFuture;
@@ -37,6 +39,7 @@ class EffectSoundService {
   double _volume = 0.85;
   DateTime? _lastFollowSoundAt;
   DateTime? _lastLikeRushSoundAt;
+  int _pendingTonesGeneration = 0;
 
   final math.Random _random = math.Random();
 
@@ -90,7 +93,11 @@ class EffectSoundService {
   void debugResetPlaybackOverrides() {
     _debugAssetPlayback = null;
     _debugGeneratedPlayback = null;
+    _missingAssetPaths.clear();
   }
+
+  @visibleForTesting
+  int get debugPendingTonesGeneration => _pendingTonesGeneration;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -157,6 +164,7 @@ class EffectSoundService {
       final assetPoolsToDispose = _assetPools.values.toList(growable: false);
       _pools.clear();
       _assetPools.clear();
+      _assetPoolFutures.clear();
       _tones.clear();
       _audioContext = null;
       for (final pool in poolsToDispose) {
@@ -246,6 +254,7 @@ class EffectSoundService {
   void resetEngagementSoundCooldowns() {
     _lastFollowSoundAt = null;
     _lastLikeRushSoundAt = null;
+    _pendingTonesGeneration++;
   }
 
   Future<void> playGiftEvent({
@@ -263,6 +272,7 @@ class EffectSoundService {
       return;
     }
 
+    _pendingTonesGeneration++;
     final randomVal = _random.nextDouble();
     final comboTier = _comboTier(comboStreak);
     final giftTier = _giftSoundTier(value);
@@ -527,6 +537,9 @@ class EffectSoundService {
     if (assetPath == null) {
       return false;
     }
+    if (_missingAssetPaths.contains(assetPath)) {
+      return false;
+    }
 
     final tone = _tones[toneName];
     final stopAfter = (tone?.duration ?? const Duration(milliseconds: 600)) +
@@ -566,6 +579,7 @@ class EffectSoundService {
       return true;
     } catch (error, stackTrace) {
       if (_isAssetNotFoundError(error)) {
+        _missingAssetPaths.add(assetPath);
         AppLogger.warning(
           'asset sound not found, fallback to generated tone: $soundKey',
           error: error,
@@ -606,17 +620,21 @@ class EffectSoundService {
       return Future.value(existing);
     }
 
-    final future = AudioPool.create(
-      source: AssetSource(assetPath, mimeType: _mp3MimeType),
-      maxPlayers: maxPlayers,
-      minPlayers: 1,
-      playerMode: PlayerMode.lowLatency,
-      audioContext: _audioContext ??= _buildAudioContext(),
-    );
-
-    return future.then((pool) {
-      _assetPools[assetPath] = pool;
-      return pool;
+    // Cache the Future itself so concurrent callers receive the same Future
+    // and AudioPool.create is never invoked more than once per path.
+    return _assetPoolFutures.putIfAbsent(assetPath, () {
+      return AudioPool.create(
+        source: AssetSource(assetPath, mimeType: _mp3MimeType),
+        maxPlayers: maxPlayers,
+        minPlayers: 1,
+        playerMode: PlayerMode.lowLatency,
+        audioContext: _audioContext ??= _buildAudioContext(),
+      ).then((pool) {
+        _assetPools[assetPath] = pool;
+        return pool;
+      }).whenComplete(() {
+        _assetPoolFutures.remove(assetPath);
+      });
     });
   }
 
@@ -840,8 +858,10 @@ class EffectSoundService {
     double volumeScale = 1.0,
     bool preferAsset = false,
   }) {
+    final generation = _pendingTonesGeneration;
     unawaited(
       Future<void>.delayed(delay, () async {
+        if (_pendingTonesGeneration != generation) return;
         await _playTone(
           toneName,
           volumeScale: volumeScale,

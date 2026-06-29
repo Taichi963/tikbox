@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +56,101 @@ void main() {
       expect(EffectSoundService.debugIsHeartMeGift('ハートミー'), isTrue);
       expect(EffectSoundService.debugIsHeartMeGift('Rose'), isFalse);
       expect(EffectSoundService.debugIsHeartMeGift(null), isFalse);
+    });
+  });
+
+  group('EffectSoundService pending tone cancellation', () {
+    final service = EffectSoundService.instance;
+
+    setUp(() {
+      service.resetEngagementSoundCooldowns();
+      service.debugResetPlaybackOverrides();
+      service.setGiftSoundEnabled(true);
+      service.setVolume(0.85);
+    });
+
+    tearDown(() {
+      service.resetEngagementSoundCooldowns();
+      service.debugResetPlaybackOverrides();
+    });
+
+    test('resetEngagementSoundCooldowns increments pending tone generation',
+        () {
+      final before = service.debugPendingTonesGeneration;
+      service.resetEngagementSoundCooldowns();
+      expect(service.debugPendingTonesGeneration, before + 1);
+    });
+
+    test('playGiftEvent increments pending tone generation', () async {
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (path, vol, dur) async {},
+        generatedPlayback: (name, vol) async {},
+      );
+      final before = service.debugPendingTonesGeneration;
+      await service.playGiftEvent(value: 1, comboStreak: 1, giftName: 'Rose');
+      expect(service.debugPendingTonesGeneration, greaterThan(before));
+    });
+
+    test('cancels secondary combo tones when reset occurs before delay fires',
+        () async {
+      // Bronze tier comboStreak=10 → comboTier=3 → _playSmallGiftCombo always
+      // schedules a secondary tone (rare_small or small_2) via _playToneAfter.
+      // Primary 'small_combo_10' starts with 'small' → uses asset path (gift_small).
+      // Secondary tones use preferAsset=false → go through generated path.
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (path, vol, dur) async {
+          assetPaths.add(path);
+        },
+        generatedPlayback: (name, vol) async {
+          generatedTones.add(name);
+        },
+      );
+
+      unawaited(
+        service.playGiftEvent(value: 1, comboStreak: 10, giftName: 'Rose'),
+      );
+      // Duration.zero yields to the event loop after all pending microtasks
+      // run, which is enough for the primary tone chain to complete.
+      await Future<void>.delayed(Duration.zero);
+
+      // Cancel before the secondary tone fires (delay is 36–44 ms).
+      service.resetEngagementSoundCooldowns();
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Primary tone plays via asset path.
+      expect(assetPaths, contains('audio/gift_small.mp3'));
+      // Secondary tone (preferAsset=false → generated) must have been cancelled.
+      expect(generatedTones, isEmpty);
+    });
+
+    test('secondary combo tone plays normally when reset does not occur',
+        () async {
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (path, vol, dur) async {
+          assetPaths.add(path);
+        },
+        generatedPlayback: (name, vol) async {
+          generatedTones.add(name);
+        },
+      );
+
+      await service.playGiftEvent(value: 1, comboStreak: 10, giftName: 'Rose');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Primary plays via asset path.
+      expect(assetPaths, contains('audio/gift_small.mp3'));
+      // Secondary tone (preferAsset=false → generated) plays after the delay.
+      expect(
+        generatedTones.any((t) => t == 'rare_small' || t == 'small_2'),
+        isTrue,
+      );
     });
   });
 
@@ -197,6 +293,28 @@ void main() {
 
       expect(assetPaths, ['audio/follow.mp3']);
       expect(generatedTones, ['small_1']);
+    });
+
+    test('missing asset is attempted only once per process', () async {
+      final assetPaths = <String>[];
+      final generatedTones = <String>[];
+
+      service.debugSetPlaybackOverrides(
+        assetPlayback: (assetPath, volume, stopAfter) async {
+          assetPaths.add(assetPath);
+          throw StateError('Unable to load asset: $assetPath');
+        },
+        generatedPlayback: (toneName, volume) async {
+          generatedTones.add(toneName);
+        },
+      );
+
+      await service.playFollowSound();
+      service.resetEngagementSoundCooldowns();
+      await service.playFollowSound();
+
+      expect(assetPaths, ['audio/follow.mp3']);
+      expect(generatedTones, ['small_1', 'small_1']);
     });
 
     test('asset path is selected for gift tiers without changing rank logic',

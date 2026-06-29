@@ -2,6 +2,41 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tikbox/models/tts_settings.dart';
 
 void main() {
+  group('TtsSettings.voiceKey', () {
+    test('produces pipe-separated name|locale|identifier', () {
+      const voice = {
+        'name': 'Kyoko',
+        'locale': 'ja-JP',
+        'identifier': 'com.apple.ttsbundle.Kyoko-compact',
+      };
+      expect(
+        TtsSettings.voiceKey(voice),
+        'Kyoko|ja-JP|com.apple.ttsbundle.Kyoko-compact',
+      );
+    });
+
+    test('uses empty string for missing fields', () {
+      expect(TtsSettings.voiceKey(const {'name': 'Test'}), 'Test||');
+      expect(TtsSettings.voiceKey(const {'locale': 'ja-JP'}), '|ja-JP|');
+    });
+
+    test('two voices with same name/locale/identifier produce equal keys', () {
+      const a = {'name': 'X', 'locale': 'ja-JP', 'identifier': 'id1'};
+      const b = {'name': 'X', 'locale': 'ja-JP', 'identifier': 'id1'};
+      expect(TtsSettings.voiceKey(a), TtsSettings.voiceKey(b));
+    });
+
+    test('voices differing in any field produce different keys', () {
+      const base = {'name': 'X', 'locale': 'ja-JP', 'identifier': 'id1'};
+      const diffName = {'name': 'Y', 'locale': 'ja-JP', 'identifier': 'id1'};
+      const diffLocale = {'name': 'X', 'locale': 'en-US', 'identifier': 'id1'};
+      const diffId = {'name': 'X', 'locale': 'ja-JP', 'identifier': 'id2'};
+      expect(TtsSettings.voiceKey(diffName), isNot(TtsSettings.voiceKey(base)));
+      expect(TtsSettings.voiceKey(diffLocale), isNot(TtsSettings.voiceKey(base)));
+      expect(TtsSettings.voiceKey(diffId), isNot(TtsSettings.voiceKey(base)));
+    });
+  });
+
   group('TtsSettings', () {
     test('defaults gift vibration to enabled', () {
       const settings = TtsSettings();

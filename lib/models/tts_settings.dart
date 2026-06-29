@@ -132,6 +132,10 @@ class TtsSettings {
     };
   }
 
+  static String voiceKey(Map<String, String> voice) =>
+      '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
+      '${voice['identifier'] ?? ''}';
+
   factory TtsSettings.fromJson(Map<String, dynamic> json) {
     double clampedDouble(
       String key,

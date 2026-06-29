@@ -56,7 +56,7 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     effectSoundService.setGiftSoundEnabled(_giftSoundEnabled);
 
     final voices = await ttsService.getAvailableVoices();
-    final availableVoiceKeys = voices.map(_voiceKey).toSet();
+    final availableVoiceKeys = voices.map(TtsSettings.voiceKey).toSet();
     settings = settings.copyWith(
       availableVoices: voices,
       clearCommentVoice: !_isAvailableVoice(
@@ -74,8 +74,11 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     await ttsService.applySettings(settings);
   }
 
-  Future<void> _persist(TtsSettings settings) async {
+  Future<void> _persist(
+    TtsSettings Function(TtsSettings current) update,
+  ) async {
     await _ensureLoaded();
+    final settings = update(state);
     state = settings;
     await _prefs?.setString(_ttsSettingsKey, jsonEncode(settings.toJson()));
     effectSoundService.setVolume(settings.effectVolume);
@@ -92,50 +95,53 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
   }
 
   Future<void> applySoundPreset(SoundPreset preset) async {
-    await _persist(state.applySoundPreset(preset));
+    await _persist((current) => current.applySoundPreset(preset));
   }
 
   Future<void> setRate(double rate) async {
-    await _persist(state.copyWith(rate: rate.clamp(0.3, 1.0)));
+    await _persist((current) => current.copyWith(rate: rate.clamp(0.3, 1.0)));
   }
 
   Future<void> setPitch(double pitch) async {
-    await _persist(state.copyWith(pitch: pitch.clamp(0.5, 2.0)));
+    await _persist((current) => current.copyWith(pitch: pitch.clamp(0.5, 2.0)));
   }
 
   Future<void> setTtsVolume(double volume) async {
-    await _persist(state.copyWith(ttsVolume: volume.clamp(0.0, 1.0)));
+    await _persist(
+      (current) => current.copyWith(ttsVolume: volume.clamp(0.0, 1.0)),
+    );
   }
 
   Future<void> setEffectVolume(double volume) async {
-    await _persist(state.copyWith(effectVolume: volume.clamp(0.0, 1.0)));
+    await _persist(
+      (current) => current.copyWith(effectVolume: volume.clamp(0.0, 1.0)),
+    );
   }
 
   Future<void> setKeepScreenOn(bool value) async {
-    await _persist(state.copyWith(keepScreenOn: value));
+    await _persist((current) => current.copyWith(keepScreenOn: value));
   }
 
   Future<void> setGiftVibrationEnabled(bool value) async {
-    await _persist(state.copyWith(giftVibrationEnabled: value));
+    await _persist(
+      (current) => current.copyWith(giftVibrationEnabled: value),
+    );
   }
 
   Future<void> setReadUsernameEnabled(bool value) async {
-    await _persist(state.copyWith(readUsernameEnabled: value));
+    await _persist((current) => current.copyWith(readUsernameEnabled: value));
   }
 
   Future<void> setCommentVoice(Map<String, String>? voice) async {
     await _persist(
-      voice == null ||
+      (current) => voice == null ||
               !_isAvailableVoice(
-                  voice, state.availableVoices.map(_voiceKey).toSet())
-          ? state.copyWith(clearCommentVoice: true)
-          : state.copyWith(commentVoice: voice),
+                voice,
+                current.availableVoices.map(TtsSettings.voiceKey).toSet(),
+              )
+          ? current.copyWith(clearCommentVoice: true)
+          : current.copyWith(commentVoice: voice),
     );
-  }
-
-  String _voiceKey(Map<String, String> voice) {
-    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
-        '${voice['identifier'] ?? ''}';
   }
 
   bool _isAvailableVoice(
@@ -145,7 +151,7 @@ class TtsSettingsNotifier extends Notifier<TtsSettings> {
     if (voice == null || voice.isEmpty) {
       return false;
     }
-    return availableVoiceKeys.contains(_voiceKey(voice));
+    return availableVoiceKeys.contains(TtsSettings.voiceKey(voice));
   }
 }
 

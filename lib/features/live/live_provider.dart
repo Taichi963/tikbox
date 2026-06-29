@@ -1,5 +1,6 @@
-import 'dart:async';
+﻿import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:piratetok_live/piratetok_live.dart';
@@ -7,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/comment_model.dart';
 import '../../services/app_logger.dart';
+import '../../services/comment_deduplicator.dart';
 import '../../services/effect_sound_service.dart';
 import '../../services/tts_service.dart';
 import '../../services/ugc_moderation_service.dart';
@@ -23,12 +25,14 @@ enum WsStatus {
 class LiveState {
   final WsStatus wsStatus;
   final bool isConnecting;
+  final bool isAutoReconnecting;
   final String? errorMessage;
   final int reconnectAttempts;
 
   const LiveState({
     this.wsStatus = WsStatus.disconnected,
     this.isConnecting = false,
+    this.isAutoReconnecting = false,
     this.errorMessage,
     this.reconnectAttempts = 0,
   });
@@ -36,6 +40,7 @@ class LiveState {
   LiveState copyWith({
     WsStatus? wsStatus,
     bool? isConnecting,
+    bool? isAutoReconnecting,
     String? errorMessage,
     int? reconnectAttempts,
     bool clearError = false,
@@ -43,6 +48,7 @@ class LiveState {
     return LiveState(
       wsStatus: wsStatus ?? this.wsStatus,
       isConnecting: isConnecting ?? this.isConnecting,
+      isAutoReconnecting: isAutoReconnecting ?? this.isAutoReconnecting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       reconnectAttempts: reconnectAttempts ?? this.reconnectAttempts,
     );
@@ -109,6 +115,7 @@ class LiveNotifier extends Notifier<LiveState> {
   DateTime? _lastGiftTime;
   int _comboStreak = 0;
   final LikeRushTracker _likeRushTracker = LikeRushTracker();
+  final CommentDeduplicator _commentDeduplicator = CommentDeduplicator();
 
   @override
   LiveState build() {
@@ -144,6 +151,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _resetReconnectState();
     _resetGiftComboState();
     _resetEngagementSoundState();
+    _commentDeduplicator.reset();
 
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
@@ -174,6 +182,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _resetReconnectState();
     _resetGiftComboState();
     _resetEngagementSoundState();
+    _commentDeduplicator.reset();
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
@@ -199,6 +208,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _autoReconnectAttempts = 0;
     _resetGiftComboState();
     _resetEngagementSoundState();
+    _commentDeduplicator.reset();
     _username = null;
     _connectRequestedAt = null;
     final previousClient = _client;
@@ -216,6 +226,7 @@ class LiveNotifier extends Notifier<LiveState> {
       state = state.copyWith(
         wsStatus: WsStatus.disconnected,
         isConnecting: false,
+        isAutoReconnecting: false,
         reconnectAttempts: 0,
         clearError: true,
       );
@@ -497,11 +508,15 @@ class LiveNotifier extends Notifier<LiveState> {
         username: _username,
       ),
     );
-    ref.read(mainProvider.notifier).startLive(_username!);
+    final mainState = ref.read(mainProvider);
+    if (!mainState.isLive) {
+      ref.read(mainProvider.notifier).startLive(_username!);
+    }
 
     state = state.copyWith(
       wsStatus: WsStatus.connected,
       isConnecting: false,
+      isAutoReconnecting: false,
       reconnectAttempts: 0,
       clearError: true,
     );
@@ -540,6 +555,7 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
+      isAutoReconnecting: true,
       errorMessage: '接続が切れました。自動で再接続します。',
     );
     _scheduleReconnect('接続が切れました');
@@ -560,6 +576,7 @@ class LiveNotifier extends Notifier<LiveState> {
     state = state.copyWith(
       wsStatus: WsStatus.connecting,
       isConnecting: true,
+      isAutoReconnecting: true,
       reconnectAttempts: trackedAttempt,
       errorMessage: '再接続しています。しばらくお待ちください。',
     );
@@ -624,11 +641,22 @@ class LiveNotifier extends Notifier<LiveState> {
       readUsernameEnabled: settings.readUsernameEnabled,
     );
     if (commentTtsText != null) {
-      _enqueueCommentTts(
-        comment,
-        ttsText: commentTtsText,
-        voice: settings.commentVoice,
-      );
+      final dedupText = CommentDeduplicator.normalizeText(text);
+      if (_commentDeduplicator.isDuplicate(
+        identity.key,
+        dedupText,
+        DateTime.now(),
+      )) {
+        AppLogger.info(
+          'Comment TTS suppressed: duplicate source=${identity.source}',
+        );
+      } else {
+        _enqueueCommentTts(
+          comment,
+          ttsText: commentTtsText,
+          voice: settings.commentVoice,
+        );
+      }
     }
   }
 
@@ -894,6 +922,7 @@ class LiveNotifier extends Notifier<LiveState> {
     _connectRequestedAt = null;
     _resetGiftComboState();
     _resetEngagementSoundState();
+    _commentDeduplicator.reset();
     final previousClient = _client;
     _client = null;
     _disconnectClientSafely(previousClient, 'dispose');
@@ -1122,38 +1151,8 @@ class LiveNotifier extends Notifier<LiveState> {
     effectSoundService.resetEngagementSoundCooldowns();
   }
 
-  String _normalizeUsername(String input) {
-    final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
-    if (trimmed.isEmpty) {
-      return '';
-    }
-
-    final uri = Uri.tryParse(trimmed);
-    if (uri != null && uri.hasScheme) {
-      if (uri.host.isEmpty) {
-        return '';
-      }
-      final host = uri.host.toLowerCase();
-      final isTikTokHost = host == 'tiktok.com' || host.endsWith('.tiktok.com');
-      if (!isTikTokHost) {
-        return '';
-      }
-      for (final segment in uri.pathSegments) {
-        if (segment.startsWith('@')) {
-          return segment.replaceFirst(RegExp(r'^@+'), '').trim();
-        }
-      }
-      return '';
-    }
-
-    final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
-    final withoutHost = withoutQuery.replaceFirst(
-      RegExp(r'^(https?://)?(www\.)?tiktok\.com/?', caseSensitive: false),
-      '',
-    );
-    final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
-    return withoutAt.split('/').first.replaceAll('@', '').trim();
-  }
+  String _normalizeUsername(String input) =>
+      UgcModerationService.normalizeTikTokUsername(input);
 
   String? _usernameInputError(String rawInput, String normalizedUsername) {
     if (_isNonTikTokUrl(rawInput)) {
@@ -1168,9 +1167,8 @@ class LiveNotifier extends Notifier<LiveState> {
     return null;
   }
 
-  bool _isLikelyTikTokUsername(String username) {
-    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(username);
-  }
+  bool _isLikelyTikTokUsername(String username) =>
+      UgcModerationService.isLikelyTikTokUsername(username);
 
   bool _isNonTikTokUrl(String input) {
     final trimmed = input.replaceAll('\u3000', ' ').replaceAll('＠', '@').trim();
@@ -1215,6 +1213,10 @@ class LiveNotifier extends Notifier<LiveState> {
     }
     return parsed;
   }
+
+  @visibleForTesting
+  Duration debugReconnectDelayForAttempt(int attempt) =>
+      _reconnectDelayForAttempt(attempt);
 }
 
 final liveProvider = NotifierProvider<LiveNotifier, LiveState>(

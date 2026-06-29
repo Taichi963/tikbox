@@ -115,4 +115,47 @@ class UgcModerationService {
           '',
         );
   }
+
+  /// Extracts a clean TikTok username from free-form input.
+  ///
+  /// Accepts: bare username, @-prefixed username, TikTok profile URL.
+  /// Returns an empty string when the input cannot be resolved to a username.
+  static String normalizeTikTokUsername(String input) {
+    final trimmed =
+        input.replaceAll('　', ' ').replaceAll('＠', '@').trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) {
+      if (uri.host.isEmpty) {
+        return '';
+      }
+      final host = uri.host.toLowerCase();
+      final isTikTokHost = host == 'tiktok.com' || host.endsWith('.tiktok.com');
+      if (!isTikTokHost) {
+        return '';
+      }
+      for (final segment in uri.pathSegments) {
+        if (segment.startsWith('@')) {
+          return segment.replaceFirst(RegExp(r'^@+'), '').trim();
+        }
+      }
+      return '';
+    }
+
+    final withoutQuery = trimmed.split(RegExp(r'[?#]')).first;
+    final withoutHost = withoutQuery.replaceFirst(
+      RegExp(r'^(https?://)?(www\.)?tiktok\.com/?', caseSensitive: false),
+      '',
+    );
+    final withoutAt = withoutHost.replaceFirst(RegExp(r'^@+'), '');
+    return withoutAt.split('/').first.replaceAll('@', '').trim();
+  }
+
+  /// Returns true when [username] matches the allowed TikTok username character set.
+  static bool isLikelyTikTokUsername(String username) {
+    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(username);
+  }
 }

@@ -6,6 +6,65 @@ import 'package:tikbox/models/comment_model.dart';
 import 'package:tikbox/services/ugc_moderation_service.dart';
 
 void main() {
+  group('UgcModerationService.normalizeTikTokUsername', () {
+    test('strips @ prefix from bare username', () {
+      expect(UgcModerationService.normalizeTikTokUsername('@alice'), 'alice');
+      expect(UgcModerationService.normalizeTikTokUsername('@@bob'), 'bob');
+      expect(UgcModerationService.normalizeTikTokUsername('carol'), 'carol');
+    });
+
+    test('extracts username from TikTok profile URL', () {
+      expect(
+        UgcModerationService.normalizeTikTokUsername(
+            'https://www.tiktok.com/@username'),
+        'username',
+      );
+      expect(
+        UgcModerationService.normalizeTikTokUsername(
+            'https://tiktok.com/@username/'),
+        'username',
+      );
+    });
+
+    test('returns empty string for non-TikTok URLs', () {
+      expect(
+        UgcModerationService.normalizeTikTokUsername('https://example.com/@user'),
+        '',
+      );
+      expect(
+        UgcModerationService.normalizeTikTokUsername('https://youtube.com/@user'),
+        '',
+      );
+    });
+
+    test('returns empty string for empty or whitespace input', () {
+      expect(UgcModerationService.normalizeTikTokUsername(''), '');
+      expect(UgcModerationService.normalizeTikTokUsername('   '), '');
+    });
+
+    test('normalizes full-width @ and ideographic space', () {
+      expect(
+        UgcModerationService.normalizeTikTokUsername('＠username'),
+        'username',
+      );
+    });
+  });
+
+  group('UgcModerationService.isLikelyTikTokUsername', () {
+    test('accepts valid TikTok username characters', () {
+      expect(UgcModerationService.isLikelyTikTokUsername('alice'), isTrue);
+      expect(UgcModerationService.isLikelyTikTokUsername('user_123'), isTrue);
+      expect(UgcModerationService.isLikelyTikTokUsername('user.name'), isTrue);
+      expect(UgcModerationService.isLikelyTikTokUsername('user-name'), isTrue);
+    });
+
+    test('rejects usernames with spaces or special characters', () {
+      expect(UgcModerationService.isLikelyTikTokUsername('user name'), isFalse);
+      expect(UgcModerationService.isLikelyTikTokUsername(''), isFalse);
+      expect(UgcModerationService.isLikelyTikTokUsername('@user'), isFalse);
+    });
+  });
+
   group('UgcModerationService', () {
     test('normalizes full-width and separated blocked terms', () {
       expect(

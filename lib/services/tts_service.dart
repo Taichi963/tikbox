@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -158,7 +159,7 @@ class TtsService {
           continue;
         }
 
-        final key = _voiceKey(voice);
+        final key = TtsSettings.voiceKey(voice);
         if (!seen.add(key)) {
           continue;
         }
@@ -213,11 +214,6 @@ class TtsService {
         name.contains('日本');
   }
 
-  String _voiceKey(Map<String, String> voice) {
-    return '${voice['name'] ?? ''}|${voice['locale'] ?? ''}|'
-        '${voice['identifier'] ?? ''}';
-  }
-
   String _voiceLabel(Map<String, String> voice) {
     final name = voice['name'] ?? voice['identifier'] ?? 'Voice';
     final locale = voice['locale'];
@@ -236,6 +232,9 @@ class TtsService {
   int getPriority(CommentModel comment) => comment.priority;
 
   bool hasSpeakableText(String text) => _sanitizeText(text).isNotEmpty;
+
+  @visibleForTesting
+  String debugSanitizeText(String text) => _sanitizeText(text);
 
   String _sanitizeText(String text) {
     if (text.isEmpty) return '';
@@ -415,6 +414,9 @@ class TtsService {
         _schedulePlaybackRetry();
         return;
       }
+      // Re-check after the async gap: a concurrent _playNext() that also
+      // waited on init() may have already claimed the queue slot.
+      if (_isPlaying || _queue.isEmpty) return;
     }
 
     _cancelPlaybackRetry();
