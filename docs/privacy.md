@@ -4,7 +4,7 @@ Last updated: June 14, 2026
 
 Effective date: `[EFFECTIVE_DATE]`
 
-Developer/operator: `[OPERATOR_NAME]`
+Developer/operator: `LiveVoice Studio`
 
 Privacy contact: zeb0kui3ackwv4pft1us@gmail.com
 

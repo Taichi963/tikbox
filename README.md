@@ -86,7 +86,7 @@ Standard operating-system diagnostic logs may incidentally contain stream IDs, p
 Operator
 
 ```
-[OPERATOR_NAME]
+LiveVoice Studio
 ```
 
 Support Email

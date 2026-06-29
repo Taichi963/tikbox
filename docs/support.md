@@ -2,7 +2,7 @@
 
 Last updated: June 14, 2026
 
-Developer/operator: `[OPERATOR_NAME]`
+Developer/operator: `LiveVoice Studio`
 
 Support email: zeb0kui3ackwv4pft1us@gmail.com
 

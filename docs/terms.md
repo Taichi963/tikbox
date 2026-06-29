@@ -4,7 +4,7 @@ Last updated: June 14, 2026
 
 Effective date: `[EFFECTIVE_DATE]`
 
-Developer/operator: `[OPERATOR_NAME]`
+Developer/operator: `LiveVoice Studio`
 
 Support contact: zeb0kui3ackwv4pft1us@gmail.com
 
@@ -12,7 +12,7 @@ Terms URL: https://taichi963.github.io/tikbox/terms.html
 
 Support URL: https://taichi963.github.io/tikbox/support.html
 
-Governing law and jurisdiction: `[GOVERNING_LAW]`
+Governing law and jurisdiction: `本規約は日本法に準拠し、本サービスに関して紛争が生じた場合、東京地方裁判所を第一審の専属的合意管轄裁判所とします。`
 
 The missing operator, effective-date, and governing-law information must be
 completed before these terms are submitted to an app store.
@@ -120,9 +120,7 @@ operation, connection availability, compatibility with future service changes,
 or identical behavior across devices.
 
 Any limitation of liability must remain subject to rights and obligations that
-cannot be excluded under applicable law. The final legal limitation and
-governing-law terms must be reviewed together with `[GOVERNING_LAW]` before
-publication.
+cannot be excluded under applicable law.
 
 ## 10. Suspension, Termination, And Support
 
