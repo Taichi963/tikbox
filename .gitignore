@@ -13,6 +13,10 @@
 local.properties
 migrate_working_dir/
 node_modules/
+.env
+*.pem
+*.p12
+*.mobileprovision
 
 # IntelliJ related
 *.iml
@@ -52,3 +56,6 @@ app.*.map.json
 /android/app/upload-keystore.jks
 **/*.jks
 **/*.keystore
+
+# Claude Code — local session state and personal memory (personal dev, not shared)
+/.claude/
