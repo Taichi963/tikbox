@@ -5,7 +5,7 @@
 The following submission fields must be completed before submission:
 
 - developer/operator: `LiveVoice Studio`
-- effective date: `[EFFECTIVE_DATE]`
+- effective date: `July 5, 2026`
 - governing law and jurisdiction: `本規約は日本法に準拠し、本サービスに関して紛争が生じた場合、東京地方裁判所を第一審の専属的合意管轄裁判所とします。`
 
 The following review items also remain to be completed:

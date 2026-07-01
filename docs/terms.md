@@ -2,7 +2,7 @@
 
 Last updated: June 14, 2026
 
-Effective date: `[EFFECTIVE_DATE]`
+Effective date: `July 5, 2026`
 
 Developer/operator: `LiveVoice Studio`
 
@@ -13,9 +13,6 @@ Terms URL: https://taichi963.github.io/tikbox/terms.html
 Support URL: https://taichi963.github.io/tikbox/support.html
 
 Governing law and jurisdiction: `本規約は日本法に準拠し、本サービスに関して紛争が生じた場合、東京地方裁判所を第一審の専属的合意管轄裁判所とします。`
-
-The missing operator, effective-date, and governing-law information must be
-completed before these terms are submitted to an app store.
 
 [Privacy Policy](privacy.html) | [Terms of Use](terms.html) |
 [Support](support.html) |

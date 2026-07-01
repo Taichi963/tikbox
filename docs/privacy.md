@@ -2,7 +2,7 @@
 
 Last updated: June 14, 2026
 
-Effective date: `[EFFECTIVE_DATE]`
+Effective date: `July 5, 2026`
 
 Developer/operator: `LiveVoice Studio`
 
@@ -11,9 +11,6 @@ Privacy contact: zeb0kui3ackwv4pft1us@gmail.com
 Privacy Policy URL: https://taichi963.github.io/tikbox/privacy.html
 
 Support URL: https://taichi963.github.io/tikbox/support.html
-
-The developer/operator name and effective date must be completed before this
-policy is submitted to an app store.
 
 [Privacy Policy](privacy.html) | [Terms of Use](terms.html) |
 [Support](support.html) |
@@ -68,7 +65,7 @@ on the user's device:
 
 - text-to-speech, sound, vibration, and display settings
 - the most recently entered stream ID
-- saved stream ID history
+- saved stream ID history (up to 5 entries)
 - user-added blocked words
 - blocked public LIVE user IDs
 
