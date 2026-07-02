@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-
 import 'features/main/main_provider.dart';
 import 'features/main/main_screen.dart';
 import 'features/main/tts_provider.dart';

@@ -412,7 +412,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                                     ),
                                     decoration: InputDecoration(
                                       labelText: '配信者の@ID / URL',
-                                      hintText: '@jppachi',
+                                      hintText: '@xxx',
                                       helperText:
                                           '表示名では接続できません。@IDまたはTikTok URLを入力してください',
                                       helperMaxLines: 2,
@@ -1047,6 +1047,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               '入力された配信IDは、公開LIVEへの接続にのみ使います。コメントとギフト情報は、読み上げ、効果音、バイブレーションのためにアプリ内で処理します。\n\n'
               '設定とID履歴は端末内に保存されます。配信サービス側の仕様変更、通信状態、OSのバックグラウンド制限により接続できない場合があります。',
             ),
+
           ),
           actions: [
             TextButton(
