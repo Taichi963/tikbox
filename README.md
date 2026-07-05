@@ -155,14 +155,14 @@ flutter build appbundle --release --no-tree-shake-icons
 
 ## Code Quality
 
-* [ ] `flutter analyze --no-pub` reports no issues
-* [ ] All automated tests pass
-* [ ] `git diff --check` reports no whitespace errors
+* [x] `flutter analyze --no-pub` reports no issues
+* [x] All automated tests pass (107 / 107)
+* [x] `git diff --check` reports no whitespace errors
 
 ## Build Verification
 
 * [ ] Android Release APK builds successfully
-* [ ] Android Release AAB builds successfully
+* [x] Android Release AAB builds successfully (42.4 MB, `--no-tree-shake-icons`)
 * [ ] iOS Archive / IPA builds successfully
 
 ## Physical Device Verification
@@ -179,6 +179,7 @@ flutter build appbundle --release --no-tree-shake-icons
 
 ## Store Submission
 
+* [ ] `[EFFECTIVE_DATE]` in `docs/privacy.md` and `docs/terms.md` replaced with the actual public release date (draft-notice paragraph removed at the same time)
 * [ ] Privacy Policy URL is publicly accessible
 * [ ] Support contact information is current
 * [ ] App Store Connect privacy responses match the release build
